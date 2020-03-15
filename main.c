@@ -790,7 +790,7 @@ double get_fld(int i_fld, int i, int j, double x, double y) {
 void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
     component_t component = components[i][j];
     double cp = get_cell_cp(component);
-    double m_mol = get_cell_cp(component);
+    double m_mol = get_cell_M(component);
 
     double cv = cp - R_GAS / m_mol;
     double gam = cp / cv;
