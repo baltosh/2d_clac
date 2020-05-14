@@ -3,27 +3,27 @@
 #include <string.h>
 
 #define M_PI        3.14159265358979323846
-#define R_GAS       8.314472
+#define GasConstant 8.314472
 
-#define N_BF 3
-#define NX 80
-#define NY 800
-#define N_COMPONENTS 5
+#define NumberBasisFunctions    3
+#define NumberCellsX            80
+#define NumberCellsY            800
+#define NumberComponents        5
 
-#define N_GP_EDGE 2
-#define N_GP_CELL 4
+#define NumberGaussPointsEdge 2
+#define NumberGaussPointsCell 4
 
-#define XMIN  0.0
-#define XMAX  0.04
-#define YMIN -0.1
-#define YMAX  0.3
+#define XMin  0.0
+#define XMax  0.04
+#define YMin -0.1
+#define YMax  0.3
 
-#define TAU   5.0e-8
-#define TMAX  2.5e-3
+#define Tau     5.0e-8
+#define TimeMax 2.5e-3
 
-#define SAVE_STEP 100
+#define SaveStep 100
 
-#define LIM_ALPHA 2.0
+#define LimiterAlpha 2.0
 
 #define _SIGN_(X) (fabs(X)/(X))
 #define _MIN_(X, Y) ((X)<(Y) ? (X) : (Y))
@@ -31,12 +31,12 @@
 
 typedef struct {
     union {
-        double flds[4][N_BF];
+        double fields[4][NumberBasisFunctions];
         struct {
-            double ro[N_BF];
-            double ru[N_BF];
-            double rv[N_BF];
-            double re[N_BF];
+            double ro[NumberBasisFunctions];
+            double ru[NumberBasisFunctions];
+            double rv[NumberBasisFunctions];
+            double re[NumberBasisFunctions];
         };
     };
 } data_t;
@@ -50,33 +50,33 @@ typedef struct {
 } point_t;
 
 typedef struct {
-    double concentrations[N_COMPONENTS];
-    int ids[N_COMPONENTS];
-} component_t;
-
+    int id[NumberComponents];
+    double concentration[NumberComponents];
+} components_t;
 
 double HX, HY;
 
-data_t data[NX][NY], r_int[NX][NY];
+data_t data[NumberCellsX][NumberCellsY], r_int[NumberCellsX][NumberCellsY];
+double concentrations[NumberCellsX][NumberCellsY][NumberComponents];
 
-point_t gp_edg_x[NX + 1][NY][N_GP_EDGE];
-point_t gp_edg_y[NX][NY + 1][N_GP_EDGE];
-double gw_edg_x[NX + 1][NY][N_GP_EDGE];
-double gw_edg_y[NX][NY + 1][N_GP_EDGE];
-double gj_edg_x[NX + 1][NY];
-double gj_edg_y[NX][NY + 1];
+point_t gaussPointEdgeX[NumberCellsX + 1][NumberCellsY][NumberGaussPointsEdge];
+point_t gaussPointEdgeY[NumberCellsX][NumberCellsY + 1][NumberGaussPointsEdge];
+double gaussWeightEdgeX[NumberCellsX + 1][NumberCellsY][NumberGaussPointsEdge];
+double gaussWeightEdgeY[NumberCellsX][NumberCellsY + 1][NumberGaussPointsEdge];
+double gj_edg_x[NumberCellsX + 1][NumberCellsY];
+double gj_edg_y[NumberCellsX][NumberCellsY + 1];
 
-point_t gp_cell[NX][NY][N_GP_CELL];
-double gw_cell[NX][NY][N_GP_CELL];
-double gj_cell[NX][NY];
-point_t c_cell[NX][NY];
-
-component_t components[NX][NY];
+point_t gaussPointCell[NumberCellsX][NumberCellsY][NumberGaussPointsCell];
+double gaussWeightCell[NumberCellsX][NumberCellsY][NumberGaussPointsCell];
+double gj_cell[NumberCellsX][NumberCellsY];
+point_t centerCell[NumberCellsX][NumberCellsY];
 
 
-double matr_a[NX][NY][N_BF][N_BF];
+double matr_a[NumberCellsX][NumberCellsY][NumberBasisFunctions][NumberBasisFunctions];
 
 void init();
+
+void calc_cnc();
 
 void calc_flx();
 
@@ -101,34 +101,57 @@ double get_fld(int i_fld, int i, int j, double x, double y);
 void cons_to_prim(int i, int j, double x, double y, prim_t *prim);
 
 double get_component_cp(int id);
+
 double get_component_M(int id);
 
-double get_cell_cp(component_t comps);
-double get_cell_M(component_t comps);
+double get_cell_cp(double concentration[NumberComponents]);
+
+double get_cell_M(double concentration[NumberComponents]);
+
+double reactionSpeed0(double[]);
+
+double reactionSpeed1(double[]);
+
+double reactionSpeed2(double[]);
+
+double reactionSpeed3(double[]);
+
+double reactionSpeed4(double[]);
+
+double (*reactionSpeeds[NumberComponents])(double[]) = {reactionSpeed0,
+                                                        reactionSpeed1,
+                                                        reactionSpeed2,
+                                                        reactionSpeed3,
+                                                        reactionSpeed4};
 
 
 int main(int argc, char **argv) {
     double t = 0.0;
     int step = 0;
+
     init();
+    calc_cnc();
+    calc_cnc();
     save_vtk(step);
-    while (t < TMAX) {
-        t += TAU;
+    while (t < TimeMax) {
+        t += Tau;
         step++;
         zero_r();
+        calc_cnc();
         calc_int();
         calc_flx();
         calc_new();
         calc_lim();
-        if (step % SAVE_STEP == 0) save_vtk(step);
+        if (step % SaveStep == 0) save_vtk(step);
     }
     return 0;
 }
 
-void inverse_matr(double a_src[N_BF][N_BF], double am[N_BF][N_BF], int N) {
-    double a[N_BF][N_BF];
-    for (int i = 0; i < N_BF; i++) {
-        for (int j = 0; j < N_BF; j++) {
+void inverse_matr(double a_src[NumberBasisFunctions][NumberBasisFunctions],
+                  double am[NumberBasisFunctions][NumberBasisFunctions], int N) {
+    double a[NumberBasisFunctions][NumberBasisFunctions];
+    for (int i = 0; i < NumberBasisFunctions; i++) {
+        for (int j = 0; j < NumberBasisFunctions; j++) {
             a[i][j] = a_src[i][j];
         }
     }
@@ -157,30 +180,32 @@ void inverse_matr(double a_src[N_BF][N_BF], double am[N_BF][N_BF], int N) {
     am[2][2] = m[2][2] / detA;
 }
 
-void mult_matr_vec(double matr[N_BF][N_BF], double vec[N_BF], double res[N_BF]) {
-    for (int i = 0; i < N_BF; i++) {
+void mult_matr_vec(double matr[NumberBasisFunctions][NumberBasisFunctions], double vec[NumberBasisFunctions],
+                   double res[NumberBasisFunctions]) {
+    for (int i = 0; i < NumberBasisFunctions; i++) {
         res[i] = 0.0;
-        for (int j = 0; j < N_BF; j++) {
+        for (int j = 0; j < NumberBasisFunctions; j++) {
             res[i] += matr[i][j] * vec[j];
         }
     }
 }
 
 void zero_r() {
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
             memset(&r_int[i][j], 0, sizeof(data_t));
         }
     }
 }
 
 void init() {
-    HX = (XMAX - XMIN) / NX;
-    HY = (YMAX - YMIN) / NY;
+    HX = (XMax - XMin) / NumberCellsX;
+    HY = (YMax - YMin) / NumberCellsY;
 
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            point_t p[N_GP_CELL];
+
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            point_t p[NumberGaussPointsCell];
             p[0].x = -1.0 / sqrt(3.0);
             p[0].y = -1.0 / sqrt(3.0);
             p[1].x = 1.0 / sqrt(3.0);
@@ -189,73 +214,74 @@ void init() {
             p[2].y = 1.0 / sqrt(3.0);
             p[3].x = -1.0 / sqrt(3.0);
             p[3].y = 1.0 / sqrt(3.0);
-            double xmin = XMIN + i * HX;
-            double ymin = YMIN + j * HY;
+            double xmin = XMin + i * HX;
+            double ymin = YMin + j * HY;
             double xmax = xmin + HX;
             double ymax = ymin + HY;
-            for (int i_gp = 0; i_gp < N_GP_CELL; i_gp++) {
-                gp_cell[i][j][i_gp].x = 0.5 * (xmin + xmax) + p[i_gp].x * (xmax - xmin) * 0.5;
-                gp_cell[i][j][i_gp].y = 0.5 * (ymin + ymax) + p[i_gp].y * (ymax - ymin) * 0.5;
-                gw_cell[i][j][i_gp] = 1.0;
+            for (int i_gp = 0; i_gp < NumberGaussPointsCell; i_gp++) {
+                gaussPointCell[i][j][i_gp].x = 0.5 * (xmin + xmax) + p[i_gp].x * (xmax - xmin) * 0.5;
+                gaussPointCell[i][j][i_gp].y = 0.5 * (ymin + ymax) + p[i_gp].y * (ymax - ymin) * 0.5;
+                gaussWeightCell[i][j][i_gp] = 1.0;
                 gj_cell[i][j] = 0.25 * (xmax - xmin) * (ymax - ymin);
             }
 
-            c_cell[i][j].x = 0.5 * (xmin + xmax);
-            c_cell[i][j].y = 0.5 * (ymin + ymax);
+            centerCell[i][j].x = 0.5 * (xmin + xmax);
+            centerCell[i][j].y = 0.5 * (ymin + ymax);
         }
     }
 
-    for (int i = 0; i <= NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            double xmin = XMIN + i * HX;
-            double ymin = YMIN + j * HY;
+    for (int i = 0; i <= NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            double xmin = XMin + i * HX;
+            double ymin = YMin + j * HY;
             double ymax = ymin + HY;
             double p[] = {-1.0 / sqrt(3.0), 1.0 / sqrt(3.0)};
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                gp_edg_x[i][j][i_gp].x = xmin;
-                gp_edg_x[i][j][i_gp].y = 0.5 * (ymin + ymax) + p[i_gp] * (ymax - ymin) * 0.5;
-                gw_edg_x[i][j][i_gp] = 1.0;
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                gaussPointEdgeX[i][j][i_gp].x = xmin;
+                gaussPointEdgeX[i][j][i_gp].y = 0.5 * (ymin + ymax) + p[i_gp] * (ymax - ymin) * 0.5;
+                gaussWeightEdgeX[i][j][i_gp] = 1.0;
                 gj_edg_x[i][j] = 0.5 * (ymax - ymin);
             }
         }
     }
 
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j <= NY; j++) {
-            double xmin = XMIN + i * HX;
-            double ymin = YMIN + j * HY;
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j <= NumberCellsY; j++) {
+            double xmin = XMin + i * HX;
+            double ymin = YMin + j * HY;
             double xmax = xmin + HX;
             double p[] = {-1.0 / sqrt(3.0), 1.0 / sqrt(3.0)};
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                gp_edg_y[i][j][i_gp].x = 0.5 * (xmin + xmax) + p[i_gp] * (xmax - xmin) * 0.5;;
-                gp_edg_y[i][j][i_gp].y = ymin;
-                gw_edg_y[i][j][i_gp] = 1.0;
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                gaussPointEdgeY[i][j][i_gp].x = 0.5 * (xmin + xmax) + p[i_gp] * (xmax - xmin) * 0.5;;
+                gaussPointEdgeY[i][j][i_gp].y = ymin;
+                gaussWeightEdgeY[i][j][i_gp] = 1.0;
                 gj_edg_y[i][j] = 0.5 * (xmax - xmin);
             }
         }
     }
 
-    double matr[N_BF][N_BF];
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            for (int m = 0; m < N_BF; m++) {
-                for (int l = 0; l < N_BF; l++) {
+    double matr[NumberBasisFunctions][NumberBasisFunctions];
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            for (int m = 0; m < NumberBasisFunctions; m++) {
+                for (int l = 0; l < NumberBasisFunctions; l++) {
                     matr[m][l] = 0.0;
-                    for (int i_gp = 0; i_gp < N_GP_CELL; i_gp++) {
-                        matr[m][l] += gw_cell[i][j][i_gp] * bf(m, i, j, gp_cell[i][j][i_gp].x, gp_cell[i][j][i_gp].y)
-                                      * bf(l, i, j, gp_cell[i][j][i_gp].x, gp_cell[i][j][i_gp].y);
+                    for (int i_gp = 0; i_gp < NumberGaussPointsCell; i_gp++) {
+                        matr[m][l] += gaussWeightCell[i][j][i_gp] *
+                                      bf(m, i, j, gaussPointCell[i][j][i_gp].x, gaussPointCell[i][j][i_gp].y)
+                                      * bf(l, i, j, gaussPointCell[i][j][i_gp].x, gaussPointCell[i][j][i_gp].y);
                     }
                     matr[m][l] *= gj_cell[i][j];
                 }
             }
-            inverse_matr(matr, matr_a[i][j], N_BF);
+            inverse_matr(matr, matr_a[i][j], NumberBasisFunctions);
         }
     }
     //todo change
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            double x = XMIN + (i + 0.5) * HX;
-            double y = YMIN + (j + 0.5) * HY;
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            double x = XMin + (i + 0.5) * HX;
+            double y = YMin + (j + 0.5) * HY;
             memset(&data[i][j], 0, sizeof(data_t));
             double r, p, u, v, cp, m_mol;
             if (y < -0.005) {
@@ -280,7 +306,7 @@ void init() {
                 cp = 1014.16;
                 m_mol = 0.02869409;
             }
-            double cv = cp - R_GAS / m_mol;
+            double cv = cp - GasConstant / m_mol;
             double gam = cp / cv;
             data[i][j].ro[0] = r;
             data[i][j].ru[0] = r * u;
@@ -289,34 +315,90 @@ void init() {
         }
     }
 
-    //concentration initialization
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            memset(&components[i][j], 0, sizeof(component_t));
-            components[i][j].ids[0] = 1;
-            components[i][j].concentrations[0] = 0.15;
-            components[i][j].ids[1] = 2;
-            components[i][j].concentrations[1] = 0.2;
-            components[i][j].ids[2] = 3;
-            components[i][j].concentrations[2] = 0.3;
-            components[i][j].ids[3] = 4;
-            components[i][j].concentrations[3] = 0.2;
-            components[i][j].ids[4] = 5;
-            components[i][j].concentrations[4] = 0.15;
+    //concentrations initialization
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            memset(&concentrations[i][j], 0, sizeof(double) * NumberComponents);
+            concentrations[i][j][0] = 0.15;
+            concentrations[i][j][1] = 0.2;
+            concentrations[i][j][2] = 0.3;
+            concentrations[i][j][3] = 0.2;
+            concentrations[i][j][4] = 0.15;
         }
     }
-
 }
 
-void calc_int() {
-    double fint[4][N_BF];
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(fint[i_fld], 0, sizeof(double) * N_BF);
+void calc_cnc() {
+
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            point_t center = centerCell[i][j];
+
+            point_t centerQuad[4];
+            memset(centerQuad, 0, sizeof(point_t) * 4);
+
+            centerQuad[0].x = center.x + HX / 4;
+            centerQuad[0].y = center.y + HY / 4;
+            centerQuad[1].x = center.x + HX / 4;
+            centerQuad[1].y = center.y - HY / 4;
+            centerQuad[2].x = center.x - HX / 4;
+            centerQuad[2].y = center.y - HY / 4;
+            centerQuad[3].x = center.x - HX / 4;
+            centerQuad[3].y = center.y + HY / 4;
+
+            double newConcentration[NumberComponents] = {0.0, 0.0, 0.0, 0.0, 0.0};
+
+            for (int q = 0; q < 4; q++) {
+
+                double oldCnc[NumberComponents], newCnc[NumberComponents];
+
+                memset(oldCnc, 0, sizeof(double) * NumberComponents);
+                memset(newCnc, 0, sizeof(double) * NumberComponents);
+
+                prim_t par;
+                cons_to_prim(i, j, centerQuad[q].x, centerQuad[q].y, &par);
+                double *concentration = concentrations[i][j];
+
+                double t = 0.0;
+                double dt = Tau / 10;
+
+                for (int i_com = 0; i_com < NumberComponents; i_com++) {
+                    oldCnc[i_com] = par.r * concentration[i_com];
+                }
+
+                while (t < Tau) {
+                    t += dt;
+                    for (int i_com = 0; i_com < NumberComponents; i_com++) {
+                        newCnc[i_com] = oldCnc[i_com] + dt * reactionSpeeds[i_com](oldCnc);
+                    }
+
+                    for (int i_com = 0; i_com < NumberComponents; i_com++) {
+                        oldCnc[i_com] = newCnc[i_com];
+                    }
+                }
+
+                for (int i_com = 0; i_com < NumberComponents; i_com++) {
+                    newConcentration[i_com] += oldCnc[i_com] - Tau * (
+                            (newCnc[i_com] - concentration[i_com] * par.r) * par.u / HX +
+                            (newCnc[i_com] - concentration[i_com] * par.r) * par.v / HY);
+                }
             }
-            for (int i_gp = 0; i_gp < N_GP_CELL; i_gp++) {
-                point_t pt = gp_cell[i][j][i_gp];
+            for (int i_com = 0; i_com < NumberComponents; i_com++) {
+                newConcentration[i_com] /= 4;
+            }
+        }
+    }
+};
+
+void calc_int() {
+    double fint[4][NumberBasisFunctions];
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            for (int i_fld = 0; i_fld < 4; i_fld++) {
+                memset(fint[i_fld], 0, sizeof(double) * NumberBasisFunctions);
+            }
+            for (int i_gp = 0; i_gp < NumberGaussPointsCell; i_gp++) {
+                point_t pt = gaussPointCell[i][j][i_gp];
                 prim_t par;
                 cons_to_prim(i, j, pt.x, pt.y, &par);
                 double f[4], g[4];
@@ -331,21 +413,21 @@ void calc_int() {
                 g[3] = par.v * (par.r * par.e_tot + par.p);
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        fint[i_fld][k] += gw_cell[i][j][i_gp] * f[i_fld] * bf_dx(k, i, j, pt.x, pt.y);
-                        fint[i_fld][k] += gw_cell[i][j][i_gp] * g[i_fld] * bf_dy(k, i, j, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        fint[i_fld][k] += gaussWeightCell[i][j][i_gp] * f[i_fld] * bf_dx(k, i, j, pt.x, pt.y);
+                        fint[i_fld][k] += gaussWeightCell[i][j][i_gp] * g[i_fld] * bf_dy(k, i, j, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     fint[i_fld][k] *= gj_cell[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i][j].flds[i_fld][k] += fint[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i][j].fields[i_fld][k] += fint[i_fld][k];
                 }
             }
 
@@ -356,15 +438,15 @@ void calc_int() {
 
 void calc_flx() {
     // X direction
-    for (int i = 1; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            double int_m[4][N_BF], int_p[4][N_BF];
+    for (int i = 1; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            double int_m[4][NumberBasisFunctions], int_p[4][NumberBasisFunctions];
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(int_m[i_fld], 0, sizeof(double) * N_BF);
-                memset(int_p[i_fld], 0, sizeof(double) * N_BF);
+                memset(int_m[i_fld], 0, sizeof(double) * NumberBasisFunctions);
+                memset(int_p[i_fld], 0, sizeof(double) * NumberBasisFunctions);
             }
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                point_t pt = gp_edg_x[i][j][i_gp];
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                point_t pt = gaussPointEdgeX[i][j][i_gp];
                 prim_t par_m, par_p;
                 double flx[4];
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
@@ -381,38 +463,38 @@ void calc_flx() {
                           - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        int_m[i_fld][k] += gw_edg_x[i][j][i_gp] * flx[i_fld] * bf(k, i - 1, j, pt.x, pt.y);
-                        int_p[i_fld][k] += gw_edg_x[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        int_m[i_fld][k] += gaussWeightEdgeX[i][j][i_gp] * flx[i_fld] * bf(k, i - 1, j, pt.x, pt.y);
+                        int_p[i_fld][k] += gaussWeightEdgeX[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     int_m[i_fld][k] *= gj_edg_x[i][j];
                     int_p[i_fld][k] *= gj_edg_x[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i - 1][j].flds[i_fld][k] -= int_m[i_fld][k];
-                    r_int[i][j].flds[i_fld][k] += int_p[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i - 1][j].fields[i_fld][k] -= int_m[i_fld][k];
+                    r_int[i][j].fields[i_fld][k] += int_p[i_fld][k];
                 }
             }
         }
     }
 
     // Y direction
-    for (int i = 0; i < NX; i++) {
-        for (int j = 1; j < NY; j++) {
-            double int_m[4][N_BF], int_p[4][N_BF];
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 1; j < NumberCellsY; j++) {
+            double int_m[4][NumberBasisFunctions], int_p[4][NumberBasisFunctions];
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(int_m[i_fld], 0, sizeof(double) * N_BF);
-                memset(int_p[i_fld], 0, sizeof(double) * N_BF);
+                memset(int_m[i_fld], 0, sizeof(double) * NumberBasisFunctions);
+                memset(int_p[i_fld], 0, sizeof(double) * NumberBasisFunctions);
             }
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                point_t pt = gp_edg_y[i][j][i_gp];
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                point_t pt = gaussPointEdgeY[i][j][i_gp];
                 prim_t par_m, par_p;
                 double flx[4];
                 cons_to_prim(i, j - 1, pt.x, pt.y, &par_m);
@@ -429,23 +511,23 @@ void calc_flx() {
                           - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        int_m[i_fld][k] += gw_edg_y[i][j][i_gp] * flx[i_fld] * bf(k, i, j - 1, pt.x, pt.y);
-                        int_p[i_fld][k] += gw_edg_y[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        int_m[i_fld][k] += gaussWeightEdgeY[i][j][i_gp] * flx[i_fld] * bf(k, i, j - 1, pt.x, pt.y);
+                        int_p[i_fld][k] += gaussWeightEdgeY[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     int_m[i_fld][k] *= gj_edg_y[i][j];
                     int_p[i_fld][k] *= gj_edg_y[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i][j - 1].flds[i_fld][k] -= int_m[i_fld][k];
-                    r_int[i][j].flds[i_fld][k] += int_p[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i][j - 1].fields[i_fld][k] -= int_m[i_fld][k];
+                    r_int[i][j].fields[i_fld][k] += int_p[i_fld][k];
                 }
             }
         }
@@ -453,20 +535,20 @@ void calc_flx() {
 
     // Left
     for (int i = 0; i <= 0; i++) {
-        for (int j = 0; j < NY; j++) {
-            double int_m[4][N_BF], int_p[4][N_BF];
+        for (int j = 0; j < NumberCellsY; j++) {
+            double int_m[4][NumberBasisFunctions], int_p[4][NumberBasisFunctions];
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(int_p[i_fld], 0, sizeof(double) * N_BF);
+                memset(int_p[i_fld], 0, sizeof(double) * NumberBasisFunctions);
             }
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                point_t pt = gp_edg_x[i][j][i_gp];
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                point_t pt = gaussPointEdgeX[i][j][i_gp];
                 prim_t par_m, par_p;
                 double flx[4];
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
                 {
                     double cp = 1014.16;
                     double m_mol = 0.02869409;
-                    double cv = cp - R_GAS / m_mol;
+                    double cv = cp - GasConstant / m_mol;
                     double gam = cp / cv;
 
                     par_m.r = par_p.r;
@@ -491,41 +573,41 @@ void calc_flx() {
                           - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        int_p[i_fld][k] += gw_edg_x[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        int_p[i_fld][k] += gaussWeightEdgeX[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     int_p[i_fld][k] *= gj_edg_x[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i][j].flds[i_fld][k] += int_p[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i][j].fields[i_fld][k] += int_p[i_fld][k];
                 }
             }
         }
     }
 
     // Right
-    for (int i = NX; i <= NX; i++) {
-        for (int j = 0; j < NY; j++) {
-            double int_m[4][N_BF], int_p[4][N_BF];
+    for (int i = NumberCellsX; i <= NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
+            double int_m[4][NumberBasisFunctions], int_p[4][NumberBasisFunctions];
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(int_m[i_fld], 0, sizeof(double) * N_BF);
+                memset(int_m[i_fld], 0, sizeof(double) * NumberBasisFunctions);
             }
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                point_t pt = gp_edg_x[i][j][i_gp];
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                point_t pt = gaussPointEdgeX[i][j][i_gp];
                 prim_t par_m, par_p;
                 double flx[4];
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
                 {
                     double cp = 1014.16;
                     double m_mol = 0.02869409;
-                    double cv = cp - R_GAS / m_mol;
+                    double cv = cp - GasConstant / m_mol;
                     double gam = cp / cv;
 
                     par_p.r = par_m.r;
@@ -550,41 +632,41 @@ void calc_flx() {
                           - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        int_m[i_fld][k] += gw_edg_x[i][j][i_gp] * flx[i_fld] * bf(k, i - 1, j, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        int_m[i_fld][k] += gaussWeightEdgeX[i][j][i_gp] * flx[i_fld] * bf(k, i - 1, j, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     int_m[i_fld][k] *= gj_edg_x[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i - 1][j].flds[i_fld][k] -= int_m[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i - 1][j].fields[i_fld][k] -= int_m[i_fld][k];
                 }
             }
         }
     }
 
     // Bottom
-    for (int i = 0; i < NX; i++) {
+    for (int i = 0; i < NumberCellsX; i++) {
         for (int j = 0; j <= 0; j++) {
-            double int_m[4][N_BF], int_p[4][N_BF];
+            double int_m[4][NumberBasisFunctions], int_p[4][NumberBasisFunctions];
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(int_p[i_fld], 0, sizeof(double) * N_BF);
+                memset(int_p[i_fld], 0, sizeof(double) * NumberBasisFunctions);
             }
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                point_t pt = gp_edg_y[i][j][i_gp];
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                point_t pt = gaussPointEdgeY[i][j][i_gp];
                 prim_t par_m, par_p;
                 double flx[4];
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
                 {
                     double cp = 1014.16;
                     double m_mol = 0.02869409;
-                    double cv = cp - R_GAS / m_mol;
+                    double cv = cp - GasConstant / m_mol;
                     double gam = cp / cv;
 
                     par_m.r = 12.090;
@@ -599,6 +681,7 @@ void calc_flx() {
                 }
                 double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
                                      par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
+
                 flx[0] = 0.5 * ((par_p.r * par_p.v + par_m.r * par_m.v) - alpha * (par_p.r - par_m.r));
                 flx[1] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
                                 - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
@@ -609,20 +692,20 @@ void calc_flx() {
                           - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        int_p[i_fld][k] += gw_edg_y[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        int_p[i_fld][k] += gaussWeightEdgeY[i][j][i_gp] * flx[i_fld] * bf(k, i, j, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     int_p[i_fld][k] *= gj_edg_y[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i][j].flds[i_fld][k] += int_p[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i][j].fields[i_fld][k] += int_p[i_fld][k];
                 }
             }
         }
@@ -630,21 +713,21 @@ void calc_flx() {
 
 
     // Top
-    for (int i = 0; i < NX; i++) {
-        for (int j = NY; j <= NY; j++) {
-            double int_m[4][N_BF], int_p[4][N_BF];
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = NumberCellsY; j <= NumberCellsY; j++) {
+            double int_m[4][NumberBasisFunctions], int_p[4][NumberBasisFunctions];
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                memset(int_m[i_fld], 0, sizeof(double) * N_BF);
+                memset(int_m[i_fld], 0, sizeof(double) * NumberBasisFunctions);
             }
-            for (int i_gp = 0; i_gp < N_GP_EDGE; i_gp++) {
-                point_t pt = gp_edg_y[i][j][i_gp];
+            for (int i_gp = 0; i_gp < NumberGaussPointsEdge; i_gp++) {
+                point_t pt = gaussPointEdgeY[i][j][i_gp];
                 prim_t par_m, par_p;
                 double flx[4];
                 cons_to_prim(i, j - 1, pt.x, pt.y, &par_m);
                 {
                     double cp = 1014.16;
                     double m_mol = 0.02869409;
-                    double cv = cp - R_GAS / m_mol;
+                    double cv = cp - GasConstant / m_mol;
                     double gam = cp / cv;
 
                     par_p.r = par_m.r;
@@ -659,6 +742,7 @@ void calc_flx() {
                 }
                 double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
                                      par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
+
                 flx[0] = 0.5 * ((par_p.r * par_p.v + par_m.r * par_m.v) - alpha * (par_p.r - par_m.r));
                 flx[1] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
                                 - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
@@ -669,20 +753,20 @@ void calc_flx() {
                           - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
 
                 for (int i_fld = 0; i_fld < 4; i_fld++) {
-                    for (int k = 0; k < N_BF; k++) {
-                        int_m[i_fld][k] += gw_edg_y[i][j][i_gp] * flx[i_fld] * bf(k, i, j - 1, pt.x, pt.y);
+                    for (int k = 0; k < NumberBasisFunctions; k++) {
+                        int_m[i_fld][k] += gaussWeightEdgeY[i][j][i_gp] * flx[i_fld] * bf(k, i, j - 1, pt.x, pt.y);
                     }
                 }
             }
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
+                for (int k = 0; k < NumberBasisFunctions; k++) {
                     int_m[i_fld][k] *= gj_edg_y[i][j];
                 }
             }
 
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                for (int k = 0; k < N_BF; k++) {
-                    r_int[i][j - 1].flds[i_fld][k] -= int_m[i_fld][k];
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    r_int[i][j - 1].fields[i_fld][k] -= int_m[i_fld][k];
                 }
             }
         }
@@ -690,13 +774,13 @@ void calc_flx() {
 }
 
 void calc_new() {
-    double tmp[N_BF];
-    for (int i = 0; i < NX; i++) {
-        for (int j = 0; j < NY; j++) {
+    double tmp[NumberBasisFunctions];
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                mult_matr_vec(matr_a[i][j], r_int[i][j].flds[i_fld], tmp);
-                for (int k = 0; k < N_BF; k++) {
-                    data[i][j].flds[i_fld][k] += TAU * tmp[k];
+                mult_matr_vec(matr_a[i][j], r_int[i][j].fields[i_fld], tmp);
+                for (int k = 0; k < NumberBasisFunctions; k++) {
+                    data[i][j].fields[i_fld][k] += Tau * tmp[k];
                 }
             }
         }
@@ -713,25 +797,25 @@ double _minmod(double a, double b, double c) {
 
 void calc_lim() {
 
-    for (int i = 1; i < NX - 1; i++) {
-        for (int j = 0; j < NY; j++) {
+    for (int i = 1; i < NumberCellsX - 1; i++) {
+        for (int j = 0; j < NumberCellsY; j++) {
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                double fm = data[i - 1][j].flds[i_fld][0];
-                double fc = data[i][j].flds[i_fld][0];
-                double fp = data[i + 1][j].flds[i_fld][0];
-                data[i][j].flds[i_fld][1] = _minmod(data[i][j].flds[i_fld][1], LIM_ALPHA * (fc - fm),
-                                                    LIM_ALPHA * (fp - fc));
+                double fm = data[i - 1][j].fields[i_fld][0];
+                double fc = data[i][j].fields[i_fld][0];
+                double fp = data[i + 1][j].fields[i_fld][0];
+                data[i][j].fields[i_fld][1] = _minmod(data[i][j].fields[i_fld][1], LimiterAlpha * (fc - fm),
+                                                      LimiterAlpha * (fp - fc));
             }
         }
     }
-    for (int i = 0; i < NX; i++) {
-        for (int j = 1; j < NY - 1; j++) {
+    for (int i = 0; i < NumberCellsX; i++) {
+        for (int j = 1; j < NumberCellsY - 1; j++) {
             for (int i_fld = 0; i_fld < 4; i_fld++) {
-                double fm = data[i][j - 1].flds[i_fld][0];
-                double fc = data[i][j].flds[i_fld][0];
-                double fp = data[i][j + 1].flds[i_fld][0];
-                data[i][j].flds[i_fld][2] = _minmod(data[i][j].flds[i_fld][2], LIM_ALPHA * (fc - fm),
-                                                    LIM_ALPHA * (fp - fc));
+                double fm = data[i][j - 1].fields[i_fld][0];
+                double fc = data[i][j].fields[i_fld][0];
+                double fp = data[i][j + 1].fields[i_fld][0];
+                data[i][j].fields[i_fld][2] = _minmod(data[i][j].fields[i_fld][2], LimiterAlpha * (fc - fm),
+                                                      LimiterAlpha * (fp - fc));
             }
         }
     }
@@ -743,10 +827,10 @@ double bf(int i_func, int i, int j, double x, double y) {
             return 1.0;
             break;
         case 1:
-            return (x - c_cell[i][j].x) / HX;
+            return (x - centerCell[i][j].x) / HX;
             break;
         case 2:
-            return (y - c_cell[i][j].y) / HY;
+            return (y - centerCell[i][j].y) / HY;
             break;
     }
 }
@@ -781,18 +865,18 @@ double bf_dy(int i_func, int i, int j, double x, double y) {
 
 double get_fld(int i_fld, int i, int j, double x, double y) {
     double res = 0.0;
-    for (int i_bf = 0; i_bf < N_BF; i_bf++) {
-        res += data[i][j].flds[i_fld][i_bf] * bf(i_bf, i, j, x, y);
+    for (int i_bf = 0; i_bf < NumberBasisFunctions; i_bf++) {
+        res += data[i][j].fields[i_fld][i_bf] * bf(i_bf, i, j, x, y);
     }
     return res;
 }
 
 void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
-    component_t component = components[i][j];
-    double cp = get_cell_cp(component);
-    double m_mol = get_cell_M(component);
+    double *concentration = concentrations[i][j];
+    double cp = get_cell_cp(concentration);
+    double m_mol = get_cell_M(concentration);
 
-    double cv = cp - R_GAS / m_mol;
+    double cv = cp - GasConstant / m_mol;
     double gam = cp / cv;
 
     double ro = get_fld(0, i, j, x, y);
@@ -810,29 +894,57 @@ void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
     prim->t = prim->e / cv;
 }
 
-double get_component_cp(int id){
-    double cps[N_COMPONENTS] = {1014.16, 1014.16, 1014.16, 1014.16, 1014.16};
+double get_component_cp(int id) {
+    double cps[NumberComponents] = {1014.16, 1014.16, 1014.16, 1014.16, 1014.16};
     return cps[id];
 }
-double get_component_M(int id){
-    double Ms[N_COMPONENTS] = {0.02869409, 0.02869409, 0.02869409, 0.02869409, 0.02869409};
+
+double get_component_M(int id) {
+    double Ms[NumberComponents] = {0.02869409, 0.02869409, 0.02869409, 0.02869409, 0.02869409};
     return Ms[id];
 }
 
-double get_cell_cp(component_t comps){
+double get_cell_cp(double concentration[NumberComponents]) {
     double cp = 0;
-    for (int i = 0; i < N_COMPONENTS; i++) {
-        cp += comps.concentrations[i] * get_component_cp(comps.ids[i]);
+    for (int i_com = 0; i_com < NumberComponents; i_com++) {
+        cp += concentration[i_com] * get_component_cp(i_com);
     }
     return cp;
 }
-double get_cell_M(component_t comps){
+
+double get_cell_M(double concentration[NumberComponents]) {
     double M = 0;
-    for (int i = 0; i < N_COMPONENTS; i++) {
-        M += comps.concentrations[i] / get_component_M(comps.ids[i]);
+    for (int i_com = 0; i_com < NumberComponents; i_com++) {
+        M += concentration[i_com] / get_component_M(i_com);
     }
-    return 1/M;
+    return 1 / M;
 }
+
+//todo change
+double reactionSpeed0(double concentration[]) {
+    printf("Function 0\n");
+    return 0;
+};
+
+double reactionSpeed1(double concentration[]) {
+    printf("Function 1\n");
+    return 0;
+};
+
+double reactionSpeed2(double concentration[]) {
+    printf("Function 2\n");
+    return 0;
+};
+
+double reactionSpeed3(double concentration[]) {
+    printf("Function 3\n");
+    return 0;
+};
+
+double reactionSpeed4(double concentration[]) {
+    printf("Function 4\n");
+    return 0;
+};
 
 void save_vtk(int num) {
     char fName[50];
@@ -843,61 +955,71 @@ void save_vtk(int num) {
     fprintf(fp, "GASDIN data file\n");
     fprintf(fp, "ASCII\n");
     fprintf(fp, "DATASET STRUCTURED_GRID\n");
-    fprintf(fp, "DIMENSIONS %d %d %d\n", NX + 1, NY + 1, 1);
-    fprintf(fp, "POINTS %d float\n", (NX + 1) * (NY + 1));
-    for (int j = 0; j <= NY; j++) {
-        for (int i = 0; i <= NX; i++) {
-            double x = XMIN + i * HX;
-            double y = YMIN + j * HY;
+    fprintf(fp, "DIMENSIONS %d %d %d\n", NumberCellsX + 1, NumberCellsY + 1, 1);
+    fprintf(fp, "POINTS %d float\n", (NumberCellsX + 1) * (NumberCellsY + 1));
+    for (int j = 0; j <= NumberCellsY; j++) {
+        for (int i = 0; i <= NumberCellsX; i++) {
+            double x = XMin + i * HX;
+            double y = YMin + j * HY;
             fprintf(fp, "%f %f %f\n", x, y, 0.0);
         }
     }
-    fprintf(fp, "CELL_DATA %d\n", NX * NY);
+    fprintf(fp, "CELL_DATA %d\n", NumberCellsX * NumberCellsY);
     fprintf(fp, "SCALARS Density float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < NY; j++) {
-        for (int i = 0; i < NX; i++) {
-            cons_to_prim(i, j, c_cell[i][j].x, c_cell[i][j].y, &pr);
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.r);
         }
     }
 
     fprintf(fp, "SCALARS Pressure float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < NY; j++) {
-        for (int i = 0; i < NX; i++) {
-            cons_to_prim(i, j, c_cell[i][j].x, c_cell[i][j].y, &pr);
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.p);
         }
     }
 
     fprintf(fp, "SCALARS TotEnergy float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < NY; j++) {
-        for (int i = 0; i < NX; i++) {
-            cons_to_prim(i, j, c_cell[i][j].x, c_cell[i][j].y, &pr);
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.e_tot);
         }
     }
 
     fprintf(fp, "SCALARS Energy float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < NY; j++) {
-        for (int i = 0; i < NX; i++) {
-            cons_to_prim(i, j, c_cell[i][j].x, c_cell[i][j].y, &pr);
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.e);
         }
     }
 
     fprintf(fp, "VECTORS Velosity float\n");
-    for (int j = 0; j < NY; j++) {
-        for (int i = 0; i < NX; i++) {
-            cons_to_prim(i, j, c_cell[i][j].x, c_cell[i][j].y, &pr);
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
             fprintf(fp, "%f %f %f\n", pr.u, pr.v, 0.0);
         }
     }
 
     fprintf(fp, "SCALARS Temperature float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < NY; j++) {
-        for (int i = 0; i < NX; i++) {
-            cons_to_prim(i, j, c_cell[i][j].x, c_cell[i][j].y, &pr);
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.t);
+        }
+    }
+
+    fprintf(fp, "VECTORS Concentrations float\n");
+    for (int j = 0; j < NumberCellsY; j++) {
+        for (int i = 0; i < NumberCellsX; i++) {
+            for (int k = 0; k < NumberComponents - 1; k++) {
+                fprintf(fp, "%f ", concentrations[i][j][k]);
+            }
+            fprintf(fp, "%f\n", concentrations[i][j][NumberComponents - 1]);
         }
     }
 
