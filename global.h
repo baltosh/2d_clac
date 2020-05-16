@@ -12,7 +12,7 @@
 #define BASE_FN_COUNT    3
 #define CELLS_X_COUNT            80
 #define CELLS_Y_COUNT            800
-#define COMPONENTS_COUNT        5
+#define COMPONENTS_COUNT        4
 
 #define GP_EDGE_COUNT 2
 #define GP_CELL_COUNT 4
@@ -83,6 +83,12 @@ point_t gp_cell[CELLS_X_COUNT][CELLS_Y_COUNT][GP_CELL_COUNT];
 double gw_cell[CELLS_X_COUNT][CELLS_Y_COUNT][GP_CELL_COUNT];
 double gj_cell[CELLS_X_COUNT][CELLS_Y_COUNT];
 point_t centerCell[CELLS_X_COUNT][CELLS_Y_COUNT];
+
+point_t q_point[4][2];
+point_t q_gp_cell[4][GP_CELL_COUNT];
+double q_gw_cell[4][GP_CELL_COUNT];
+double q_gj_cell[4];
+
 
 
 double matr_a[CELLS_X_COUNT][CELLS_Y_COUNT][BASE_FN_COUNT][BASE_FN_COUNT];
