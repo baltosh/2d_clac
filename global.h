@@ -46,7 +46,7 @@ typedef struct prim {
     double gam;
     double cp;
     double cv;
-    double m;
+    double m_mol;
     double c[COMPONENTS_COUNT]; /**< concentrations */
 } prim_t;
 
@@ -82,7 +82,7 @@ double gj_edge_y[CELLS_X_COUNT][CELLS_Y_COUNT + 1];
 point_t gp_cell[CELLS_X_COUNT][CELLS_Y_COUNT][GP_CELL_COUNT];
 double gw_cell[CELLS_X_COUNT][CELLS_Y_COUNT][GP_CELL_COUNT];
 double gj_cell[CELLS_X_COUNT][CELLS_Y_COUNT];
-point_t centerCell[CELLS_X_COUNT][CELLS_Y_COUNT];
+point_t center_cell[CELLS_X_COUNT][CELLS_Y_COUNT];
 
 point_t q_point[4][2];
 point_t q_gp_cell[4][GP_CELL_COUNT];

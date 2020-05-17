@@ -8,8 +8,6 @@ int main(int argc, char **argv) {
     int step = 0;
 
     init();
-    calc_cnc();
-    calc_cnc();
     save_vtk(step);
     while (t < TIME_MAX) {
         t += TAU;
@@ -103,8 +101,8 @@ void init() {
                 gj_cell[i][j] = 0.25 * (xmax - xmin) * (ymax - ymin);
             }
 
-            centerCell[i][j].x = 0.5 * (xmin + xmax);
-            centerCell[i][j].y = 0.5 * (ymin + ymax);
+            center_cell[i][j].x = 0.5 * (xmin + xmax);
+            center_cell[i][j].y = 0.5 * (ymin + ymax);
         }
     }
 
@@ -162,46 +160,16 @@ void init() {
             double y = Y_MIN + (j + 0.5) * HY;
             memset(&data[i][j], 0, sizeof(data_t));
             double r, p, u, v, cp_mix, m_mol_mix;
-            double rc[COMPONENTS_COUNT], c[COMPONENTS_COUNT], cp[COMPONENTS_COUNT], m_mol[COMPONENTS_COUNT];
-            if (y < Y_MAX / 2.0) {
-                p = 2.152e+5;
-                u = 0.0;
-                v = 97.76;
+            double rc[COMPONENTS_COUNT];
 
-                rc[0] = 1.2601;
-                rc[1] = 0;
-                rc[2] = 0;
-                rc[3] = 0;
+            p = 1.e+5;
+            u = 0.0;
+            v = 0.0;
 
-                cp[0] = 1014.16;
-                cp[1] = 1014.16;
-                cp[2] = 1014.16;
-                cp[3] = 1014.16;
-
-                m_mol[0] = 0.03007;
-                m_mol[1] = 0.02805;
-                m_mol[2] = 0.001;
-                m_mol[3] = 0.657;
-            } else {
-                p = 2.152e+5;
-                u = 0.0;
-                v = -97.76;
-
-                rc[0] = 1.2601;
-                rc[1] = 0;
-                rc[2] = 0;
-                rc[3] = 0;
-
-                cp[0] = 1014.16;
-                cp[1] = 1014.16;
-                cp[2] = 1014.16;
-                cp[3] = 1014.16;
-
-                m_mol[0] = 0.03007;
-                m_mol[1] = 0.02805;
-                m_mol[2] = 0.001;
-                m_mol[3] = 0.657;
-            }
+            rc[0] = 0;
+            rc[1] = 0;
+            rc[2] = 0;
+            rc[3] = 0;
 
             r = 0.0;
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
@@ -210,17 +178,12 @@ void init() {
 
             cp_mix = 0.0;
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                cp_mix += rc[i_comp] / r * cp[i_comp];
-            }
-
-            r = 0.0;
-            for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                r += c[i_comp] * cp[i_comp];
+                cp_mix += rc[i_comp] / r * get_component_cp(i_comp);
             }
 
             double tmp = 0.0;
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                tmp += c[i_comp] / m_mol[i_comp];
+                tmp += rc[i_comp] / r / get_component_M(i_comp);
             }
             m_mol_mix = 1 / tmp;
 
@@ -238,30 +201,30 @@ void init() {
 }
 
 void calc_cnc() {
-
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
-            point_t center = centerCell[i][j];
+            point_t center = center_cell[i][j];
+            //первый квадрат x < xc, y > yc
             q_point[0][0].x = center.x - HX / 2;
             q_point[0][0].y = center.y;
             q_point[0][1].x = center.x;
             q_point[0][1].y = center.y + HY / 2;
-
+            //второй квадрат x > xc, y > yc
             q_point[1][0].x = center.x;
             q_point[1][0].y = center.y;
             q_point[1][1].x = center.x + HX / 2;
             q_point[1][1].y = center.y + HY / 2;
-
+            //третий квадрат x < xc, y < yc
             q_point[2][0].x = center.x - HX / 2;
             q_point[2][0].y = center.y - HY / 2;
             q_point[2][1].x = center.x;
             q_point[2][1].y = center.y;
-
+            //четвертый квадрат x > xc, y > yc
             q_point[3][0].x = center.x;
             q_point[3][0].y = center.y - HY / 2;
             q_point[3][1].x = center.x + HX / 2;
             q_point[3][1].y = center.y;
-//считаем интегральное среднее
+            //определяем числа для квадратурных формул Гаусса
             for (int i_quad = 0; i_quad < 4; i_quad++) {
                 point_t p[GP_CELL_COUNT];
                 p[0].x = -1.0 / sqrt(3.0);
@@ -283,10 +246,12 @@ void calc_cnc() {
                     q_gj_cell[i_quad] = 0.25 * (xmax - xmin) * (ymax - ymin);
                 }
             }
+            //считаем интегральные средние для концентраций на начальный момент
             for (int i_quad = 0; i_quad < 4; i_quad++) {
                 double old_rc[COMPONENTS_COUNT], new_rc[COMPONENTS_COUNT];
                 for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
                     old_rc[i_com] = 0.0;
+
                     for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
                         old_rc[i_com] +=
                                 get_field_rc(i, j, q_gp_cell[i_quad][i_gp].x, q_gp_cell[i_quad][i_gp].y, i_com) *
@@ -294,65 +259,54 @@ void calc_cnc() {
                     }
                     old_rc[i_com] *= q_gj_cell[i_quad] / (HX * HY / 4);
                 }
-//                memset(old_rc, 0, sizeof(double) * COMPONENTS_COUNT);
-//                memset(new_rc, 0, sizeof(double) * COMPONENTS_COUNT);
+                //решаем систему диффуров относительно интегральных средних для концентраций
                 double t = 0.0;
                 double dt = TAU / 10;
 
                 while (t < TAU) {
                     t += dt;
                     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                        new_rc[i_com] = old_rc[i_com] + dt * reactionSpeeds[i_com](oldCnc);
+                        new_rc[i_com] = old_rc[i_com] + dt * reactionSpeeds[i_com](old_rc);
                     }
 
                     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
                         old_rc[i_com] = new_rc[i_com];
                     }
                 }
-
+                //интегральные средние для концентраций в новый момент времени в переменной old_rc
+                //находим координаты разложение функций концентраций на базисные функции
+                double rc_bf[BASE_FN_COUNT], b[BASE_FN_COUNT];
                 for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+                    for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
+                        b[i_bf] = 0.0;
 
+                        for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
+                            point_t gauss_point = gp_cell[i][j][i_gp];
+                            double rc_cap;
+                            if (gauss_point.x < center.x) {
+                                if (gauss_point.y < center.y) {
+                                    rc_cap = old_rc[2];
+                                } else {
+                                    rc_cap = old_rc[0];
+                                }
+                            } else {
+                                if (gauss_point.y < gauss_point.y) {
+                                    rc_cap = old_rc[3];
+                                } else {
+                                    rc_cap = old_rc[1];
+                                }
+                            }
 
-                }
-            }
-
-            for (int q = 0; q < 4; q++) {
-
-                double oldCnc[COMPONENTS_COUNT], newCnc[COMPONENTS_COUNT];
-
-                memset(oldCnc, 0, sizeof(double) * COMPONENTS_COUNT);
-                memset(newCnc, 0, sizeof(double) * COMPONENTS_COUNT);
-
-                prim_t par;
-                cons_to_prim(i, j, centerQuad[q].x, centerQuad[q].y, &par);
-                double *concentration = concentrations[i][j];
-
-                double t = 0.0;
-                double dt = TAU / 10;
-
-                for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                    oldCnc[i_com] = par.r * concentration[i_com];
-                }
-
-                while (t < TAU) {
-                    t += dt;
-                    for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                        newCnc[i_com] = oldCnc[i_com] + dt * reactionSpeeds[i_com](oldCnc);
+                            b[i_bf] += rc_cap * bf(i_bf, i, j, gauss_point.x, gauss_point.y) * gw_cell[i][j][i_gp];
+                        }
+                        b[i_bf] *= gj_cell[i][j];
                     }
 
-                    for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                        oldCnc[i_com] = newCnc[i_com];
+                    mult_matr_vec(matr_a[i][j], b, rc_bf);
+                    for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
+                        data[i][j].rc[i_comp][i_bf] = rc_bf[i_bf];
                     }
                 }
-
-                for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                    newConcentration[i_com] += oldCnc[i_com] - TAU * (
-                            (newCnc[i_com] - concentration[i_com] * par.r) * par.u / HX +
-                            (newCnc[i_com] - concentration[i_com] * par.r) * par.v / HY);
-                }
-            }
-            for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                newConcentration[i_com] /= 4;
             }
         }
     }
@@ -510,7 +464,7 @@ void calc_flx() {
         }
     }
 
-    // Left
+    // Left Чистый этан втекает в трубу слева
     for (int i = 0; i <= 0; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
@@ -521,15 +475,15 @@ void calc_flx() {
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
                 {
-                    double cp = 1014.16;
-                    double m_mol = 0.02869409;
+                    double cp = get_component_cp(0);
+                    double m_mol = get_component_M(0);
                     double cv = cp - GAS_CONSTANT / m_mol;
                     double gam = cp / cv;
 
-                    par_m.r = par_p.r;
-                    par_m.u = -par_p.u;
-                    par_m.v = par_p.v;
-                    par_m.p = par_p.p;
+                    par_m.r = 1.293;
+                    par_m.u = 0;
+                    par_m.v = 100;
+                    par_m.p = 1.e+5;
                     par_m.e = par_m.p / (par_m.r * (gam - 1.0));
                     par_m.e_tot = par_m.e + (par_m.u * par_m.u + par_m.v * par_m.v) * 0.5;
                     par_m.cz = sqrt(gam * par_m.p / par_m.r);
@@ -574,7 +528,7 @@ void calc_flx() {
         }
     }
 
-    // Right
+    // Right Правый конец трубы является стоком
     for (int i = CELLS_X_COUNT; i <= CELLS_X_COUNT; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
@@ -585,13 +539,13 @@ void calc_flx() {
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
                 {
-                    double cp = 1014.16;
-                    double m_mol = 0.02869409;
+                    double cp = par_m.cp;
+                    double m_mol = par_m.m_mol;
                     double cv = cp - GAS_CONSTANT / m_mol;
                     double gam = cp / cv;
 
                     par_p.r = par_m.r;
-                    par_p.u = -par_m.u;
+                    par_p.u = par_m.u;
                     par_p.v = par_m.v;
                     par_p.p = par_m.p;
                     par_p.e = par_p.p / (par_p.r * (gam - 1.0));
@@ -637,7 +591,8 @@ void calc_flx() {
             }
         }
     }
-
+//Поток через верхнюю и нижнюю границы не учитывается, так как на них опредлено условие непротекания
+/**
     // Bottom
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = 0; j <= 0; j++) {
@@ -764,7 +719,7 @@ void calc_flx() {
                 }
             }
         }
-    }
+    } **/
 }
 
 void calc_new() {
@@ -821,10 +776,10 @@ double bf(int i_func, int i, int j, double x, double y) {
             return 1.0;
             break;
         case 1:
-            return (x - centerCell[i][j].x) / HX;
+            return (x - center_cell[i][j].x) / HX;
             break;
         case 2:
-            return (y - centerCell[i][j].y) / HY;
+            return (y - center_cell[i][j].y) / HY;
             break;
     }
 }
@@ -881,18 +836,23 @@ void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
     prim->cz = sqrt(gam * prim->p / prim->r);
     prim->t = prim->e / cv;
 
+    prim->cp = cp;
+    prim->m_mol = m_mol;
+
     for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
         prim->c[i] = get_field_rc(i, j, x, y, i) / prim->r;
     }
 }
 
 double get_component_cp(int id) {
-    double cps[COMPONENTS_COUNT] = {1014.16, 1014.16, 1014.16, 1014.16, 1014.16};
+    //этан, этилен, водород, метан
+    double cps[COMPONENTS_COUNT] = {469.64, 572.57, 14274.97, 925.55};
     return cps[id];
 }
 
 double get_component_M(int id) {
-    double Ms[COMPONENTS_COUNT] = {0.02869409, 0.02869409, 0.02869409, 0.02869409, 0.02869409};
+    //этан, этилен, водород, метан
+    double Ms[COMPONENTS_COUNT] = {0.03007012, 0.02805418, 0.00201594, 0.01604303};
     return Ms[id];
 }
 
@@ -968,27 +928,27 @@ double get_field_rc(int i, int j, double x, double y, int k) {
 }
 
 //todo change
-double reactionSpeed0(double concentration[]) {
+double reactionSpeed0(double rc[]) {
     printf("Function 0\n");
     return 0;
 };
 
-double reactionSpeed1(double concentration[]) {
+double reactionSpeed1(double rc[]) {
     printf("Function 1\n");
     return 0;
 };
 
-double reactionSpeed2(double concentration[]) {
+double reactionSpeed2(double rc[]) {
     printf("Function 2\n");
     return 0;
 };
 
-double reactionSpeed3(double concentration[]) {
+double reactionSpeed3(double rc[]) {
     printf("Function 3\n");
     return 0;
 };
 
-double reactionSpeed4(double concentration[]) {
+double reactionSpeed4(double rc[]) {
     printf("Function 4\n");
     return 0;
 };
@@ -1015,7 +975,7 @@ void save_vtk(int num) {
     fprintf(fp, "SCALARS Density float 1\nLOOKUP_TABLE default\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.r);
         }
     }
@@ -1023,7 +983,7 @@ void save_vtk(int num) {
     fprintf(fp, "SCALARS Pressure float 1\nLOOKUP_TABLE default\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.p);
         }
     }
@@ -1031,7 +991,7 @@ void save_vtk(int num) {
     fprintf(fp, "SCALARS TotEnergy float 1\nLOOKUP_TABLE default\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.e_tot);
         }
     }
@@ -1039,7 +999,7 @@ void save_vtk(int num) {
     fprintf(fp, "SCALARS Energy float 1\nLOOKUP_TABLE default\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.e);
         }
     }
@@ -1047,7 +1007,7 @@ void save_vtk(int num) {
     fprintf(fp, "VECTORS Velosity float\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             fprintf(fp, "%f %f %f\n", pr.u, pr.v, 0.0);
         }
     }
@@ -1055,7 +1015,7 @@ void save_vtk(int num) {
     fprintf(fp, "SCALARS Temperature float 1\nLOOKUP_TABLE default\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, centerCell[i][j].x, centerCell[i][j].y, &pr);
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             fprintf(fp, "%f\n", pr.t);
         }
     }
@@ -1063,10 +1023,11 @@ void save_vtk(int num) {
     fprintf(fp, "VECTORS Concentrations float\n");
     for (int j = 0; j < CELLS_Y_COUNT; j++) {
         for (int i = 0; i < CELLS_X_COUNT; i++) {
+            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
             for (int k = 0; k < COMPONENTS_COUNT - 1; k++) {
-                fprintf(fp, "%f ", concentrations[i][j][k]);
+                fprintf(fp, "%f ", pr.c[k]);
             }
-            fprintf(fp, "%f\n", concentrations[i][j][COMPONENTS_COUNT - 1]);
+            fprintf(fp, "%f\n", pr.c[COMPONENTS_COUNT - 1]);
         }
     }
 
