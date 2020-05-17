@@ -3,6 +3,8 @@
 #include <string.h>
 #include "global.h"
 
+char fName[50];
+
 int main(int argc, char **argv) {
     double t = 0.0;
     int step = 0;
@@ -166,7 +168,7 @@ void init() {
             u = 0.0;
             v = 0.0;
 
-            rc[0] = 0;
+            rc[0] = 1.293;
             rc[1] = 0;
             rc[2] = 0;
             rc[3] = 0;
@@ -954,7 +956,6 @@ double reactionSpeed4(double rc[]) {
 };
 
 void save_vtk(int num) {
-    char fName[50];
     prim_t pr;
     sprintf(fName, "res_%010d.vtk", num);
     FILE *fp = fopen(fName, "w");
@@ -1033,5 +1034,4 @@ void save_vtk(int num) {
 
     fclose(fp);
     printf("File '%s' saved...\n", fName);
-
 }
