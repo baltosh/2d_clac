@@ -17,15 +17,15 @@
 #define GP_EDGE_COUNT 2
 #define GP_CELL_COUNT 4
 
-#define X_MIN  0.0
-#define X_MAX  0.04
-#define Y_MIN -0.1
-#define Y_MAX  0.3
+#define X_MIN   0.0
+#define X_MAX   0.04
+#define Y_MIN  -0.1
+#define Y_MAX   0.3
 
 #define TAU     5.0e-8
 #define TIME_MAX 2.5e-3
 
-#define SAVE_STEP 100
+#define SAVE_STEP 1
 
 #define LIMITER_ALPHA 2.0
 
@@ -90,7 +90,6 @@ double q_gw_cell[4][GP_CELL_COUNT];
 double q_gj_cell[4];
 
 
-
 double matr_a[CELLS_X_COUNT][CELLS_Y_COUNT][BASE_FN_COUNT][BASE_FN_COUNT];
 
 void init();
@@ -150,5 +149,17 @@ double (*reactionSpeeds[COMPONENTS_COUNT])(double[]) = {reactionSpeed0,
                                                         reactionSpeed2,
                                                         reactionSpeed3,
                                                         reactionSpeed4};
+
+void get_left_boundary(prim_t *par_m, prim_t *par_p);
+
+void get_right_boundary(prim_t *par_m, prim_t *par_p);
+
+void get_bottom_boundary(prim_t *par_m, prim_t *par_p);
+
+void get_top_boundary(prim_t *par_m, prim_t *par_p);
+
+void calc_vertical_flx(prim_t *par_m, prim_t *par_p, double flx[]);
+
+void calc_horizontal_flx(prim_t *par_m, prim_t *par_p, double flx[]);
 
 #endif //INC_2D_CALC_GLOBAL_H

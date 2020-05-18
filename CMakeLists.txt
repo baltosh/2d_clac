@@ -3,6 +3,6 @@ project(2d_calc C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(2d_calc main.c global.h)
+add_executable(2d_calc main.c global.h test.c)
 
 target_link_libraries(2d_calc m)

@@ -3,7 +3,9 @@
 #include <string.h>
 #include "global.h"
 
-char fName[50];
+double T = 800;
+double k1 = 0.503;
+double k2 = 0.073;
 
 int main(int argc, char **argv) {
     double t = 0.0;
@@ -14,8 +16,9 @@ int main(int argc, char **argv) {
     while (t < TIME_MAX) {
         t += TAU;
         step++;
+        printf("%i\n", step);
         zero_r();
-        calc_cnc();
+        //calc_cnc();
         calc_int();
         calc_flx();
         calc_new();
@@ -164,11 +167,24 @@ void init() {
             double r, p, u, v, cp_mix, m_mol_mix;
             double rc[COMPONENTS_COUNT];
 
-            p = 1.e+5;
-            u = 0.0;
-            v = 0.0;
+            if (y < -0.005) {
+                r = 12.090;
+                p = 2.152e+5;
+                u = 0.0;
+                v = 97.76;
+            } else if (y > HY * sin(M_PI * x / 0.01)) {
+                r = 1.198;
+                p = 1.e+5;
+                u = 0.0;
+                v = 0.0;
+            } else {
+                r = 6.037;
+                p = 1.e+5;
+                u = 0.0;
+                v = 0.0;
+            }
 
-            rc[0] = 1.293;
+            rc[0] = r;
             rc[1] = 0;
             rc[2] = 0;
             rc[3] = 0;
@@ -177,6 +193,9 @@ void init() {
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
                 r += rc[i_comp];
             }
+
+            u = 0.0;
+            v = 0.0;
 
             cp_mix = 0.0;
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
@@ -188,6 +207,8 @@ void init() {
                 tmp += rc[i_comp] / r / get_component_M(i_comp);
             }
             m_mol_mix = 1 / tmp;
+
+            //p = r * GAS_CONSTANT * T / m_mol_mix;
 
             double cv = cp_mix - GAS_CONSTANT / m_mol_mix;
             double gam = cp_mix / cv;
@@ -312,15 +333,17 @@ void calc_cnc() {
             }
         }
     }
-};
+}
 
 void calc_int() {
     data_t fint;
+    memset(&fint, 0, sizeof(data_t));
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
                 point_t pt = gp_cell[i][j][i_gp];
                 prim_t par;
+                memset(&par, 0, sizeof(prim_t));
                 cons_to_prim(i, j, pt.x, pt.y, &par);
                 double f[3 + COMPONENTS_COUNT], g[3 + COMPONENTS_COUNT];
 
@@ -332,7 +355,9 @@ void calc_int() {
                 f[COMPONENTS_COUNT + 1] = par.r * par.u * par.v;
                 f[COMPONENTS_COUNT + 2] = par.u * (par.r * par.e_tot + par.p);
 
-                g[0] = par.r * par.v;
+                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+                    g[i_comp] = par.r * par.c[i_comp] * par.v;
+                }
                 g[COMPONENTS_COUNT] = par.r * par.v * par.u;
                 g[COMPONENTS_COUNT + 1] = par.r * par.v * par.v + par.p;
                 g[COMPONENTS_COUNT + 2] = par.v * (par.r * par.e_tot + par.p);
@@ -366,30 +391,17 @@ void calc_flx() {
     for (int i = 1; i < CELLS_X_COUNT; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
-
+            memset(&int_m, 0, sizeof(data_t));
+            memset(&int_p, 0, sizeof(data_t));
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
+                memset(&par_m, 0, sizeof(prim_t));
+                memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
-                double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
-                                     par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
-
-                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    flx[i_comp] = 0.5 * ((par_p.r * par_p.c[i_comp] * par_p.u + par_m.r * par_m.c[i_comp] * par_m.u)
-                                         - alpha * (par_p.r * par_p.c[i_comp] - par_m.r * par_m.c[i_comp]));
-                }
-
-                flx[COMPONENTS_COUNT] =
-                        0.5 * ((par_p.r * par_p.u * par_p.u + par_p.p + par_m.r * par_m.u * par_m.u + par_m.p)
-                               - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
-                flx[COMPONENTS_COUNT + 1] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
-                                                   - alpha * (par_p.r * par_p.v - par_m.r * par_m.v));
-                flx[COMPONENTS_COUNT + 2] = 0.5 *
-                                            (((par_p.r * par_p.e_tot + par_p.p) * par_p.u +
-                                              (par_m.r * par_m.e_tot + par_m.p) * par_m.u)
-                                             - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
+                calc_horizontal_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -418,30 +430,17 @@ void calc_flx() {
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = 1; j < CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
-
+            memset(&int_m, 0, sizeof(data_t));
+            memset(&int_p, 0, sizeof(data_t));
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_y[i][j][i_gp];
                 prim_t par_m, par_p;
+                memset(&par_m, 0, sizeof(prim_t));
+                memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j - 1, pt.x, pt.y, &par_m);
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
-                double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
-                                     par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
-
-                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    flx[i_comp] = 0.5 * ((par_p.r * par_p.c[i_comp] * par_p.v + par_m.r * par_m.c[i_comp] * par_m.v)
-                                         - alpha * (par_p.r * par_p.c[i_comp] - par_m.r * par_m.c[i_comp]));
-                }
-
-                flx[COMPONENTS_COUNT] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
-                                               - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
-                flx[COMPONENTS_COUNT + 1] =
-                        0.5 * ((par_p.r * par_p.v * par_p.v + par_p.p + par_m.r * par_m.v * par_m.v + par_m.p)
-                               - alpha * (par_p.r * par_p.v - par_m.r * par_m.v));
-                flx[COMPONENTS_COUNT + 2] = 0.5 *
-                                            (((par_p.r * par_p.e_tot + par_p.p) * par_p.v +
-                                              (par_m.r * par_m.e_tot + par_m.p) * par_m.v)
-                                             - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
+                calc_vertical_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -470,45 +469,18 @@ void calc_flx() {
     for (int i = 0; i <= 0; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
-
+            memset(&int_m, 0, sizeof(data_t));
+            memset(&int_p, 0, sizeof(data_t));
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
+                memset(&par_m, 0, sizeof(prim_t));
+                memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
-                {
-                    double cp = get_component_cp(0);
-                    double m_mol = get_component_M(0);
-                    double cv = cp - GAS_CONSTANT / m_mol;
-                    double gam = cp / cv;
+                get_left_boundary(&par_m, &par_p);
 
-                    par_m.r = 1.293;
-                    par_m.u = 0;
-                    par_m.v = 100;
-                    par_m.p = 1.e+5;
-                    par_m.e = par_m.p / (par_m.r * (gam - 1.0));
-                    par_m.e_tot = par_m.e + (par_m.u * par_m.u + par_m.v * par_m.v) * 0.5;
-                    par_m.cz = sqrt(gam * par_m.p / par_m.r);
-                    par_m.t = par_m.e / cv;
-
-                }
-                double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
-                                     par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
-
-                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    flx[i_comp] = 0.5 * ((par_p.r * par_p.c[i_comp] * par_p.u + par_m.r * par_m.c[i_comp] * par_m.u)
-                                         - alpha * (par_p.r * par_p.c[i_comp] - par_m.r * par_m.c[i_comp]));
-                }
-
-                flx[COMPONENTS_COUNT] =
-                        0.5 * ((par_p.r * par_p.u * par_p.u + par_p.p + par_m.r * par_m.u * par_m.u + par_m.p)
-                               - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
-                flx[COMPONENTS_COUNT + 1] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
-                                                   - alpha * (par_p.r * par_p.v - par_m.r * par_m.v));
-                flx[COMPONENTS_COUNT + 2] = 0.5 *
-                                            (((par_p.r * par_p.e_tot + par_p.p) * par_p.u +
-                                              (par_m.r * par_m.e_tot + par_m.p) * par_m.u)
-                                             - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
+                calc_horizontal_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -534,45 +506,18 @@ void calc_flx() {
     for (int i = CELLS_X_COUNT; i <= CELLS_X_COUNT; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
-
+            memset(&int_m, 0, sizeof(data_t));
+            memset(&int_p, 0, sizeof(data_t));
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
+                memset(&par_m, 0, sizeof(prim_t));
+                memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
-                {
-                    double cp = par_m.cp;
-                    double m_mol = par_m.m_mol;
-                    double cv = cp - GAS_CONSTANT / m_mol;
-                    double gam = cp / cv;
+                get_right_boundary(&par_m, &par_p);
 
-                    par_p.r = par_m.r;
-                    par_p.u = par_m.u;
-                    par_p.v = par_m.v;
-                    par_p.p = par_m.p;
-                    par_p.e = par_p.p / (par_p.r * (gam - 1.0));
-                    par_p.e_tot = par_p.e + (par_p.u * par_p.u + par_p.v * par_p.v) * 0.5;
-                    par_p.cz = sqrt(gam * par_p.p / par_p.r);
-                    par_p.t = par_p.e / cv;
-
-                }
-                double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
-                                     par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
-
-                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    flx[i_comp] = 0.5 * ((par_p.r * par_p.c[i_comp] * par_p.u + par_m.r * par_m.c[i_comp] * par_m.u)
-                                         - alpha * (par_p.r * par_p.c[i_comp] - par_m.r * par_m.c[i_comp]));
-                }
-
-                flx[COMPONENTS_COUNT] =
-                        0.5 * ((par_p.r * par_p.u * par_p.u + par_p.p + par_m.r * par_m.u * par_m.u + par_m.p)
-                               - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
-                flx[COMPONENTS_COUNT + 1] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
-                                                   - alpha * (par_p.r * par_p.v - par_m.r * par_m.v));
-                flx[COMPONENTS_COUNT + 2] = 0.5 *
-                                            (((par_p.r * par_p.e_tot + par_p.p) * par_p.u +
-                                              (par_m.r * par_m.e_tot + par_m.p) * par_m.u)
-                                             - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
+                calc_horizontal_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -594,50 +539,22 @@ void calc_flx() {
         }
     }
 //Поток через верхнюю и нижнюю границы не учитывается, так как на них опредлено условие непротекания
-/**
     // Bottom
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = 0; j <= 0; j++) {
             data_t int_m, int_p;
-
+            memset(&int_m, 0, sizeof(data_t));
+            memset(&int_p, 0, sizeof(data_t));
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_y[i][j][i_gp];
                 prim_t par_m, par_p;
+                memset(&par_m, 0, sizeof(prim_t));
+                memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
-                {
-                    double cp = 1014.16;
-                    double m_mol = 0.02869409;
-                    double cv = cp - GAS_CONSTANT / m_mol;
-                    double gam = cp / cv;
+                get_bottom_boundary(&par_m, &par_p);
 
-                    par_m.r = 12.090;
-                    par_m.p = 2.152e+5;
-                    par_m.u = 0.0;
-                    par_m.v = 97.76;
-                    par_m.e = par_m.p / (par_m.r * (gam - 1.0));
-                    par_m.e_tot = par_m.e + (par_m.u * par_m.u + par_m.v * par_m.v) * 0.5;
-                    par_m.cz = sqrt(gam * par_m.p / par_m.r);
-                    par_m.t = par_m.e / cv;
-
-                }
-                double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
-                                     par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
-
-                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    flx[i_comp] = 0.5 * ((par_p.r * par_p.c[i_comp] * par_p.v + par_m.r * par_m.c[i_comp] * par_m.v)
-                                         - alpha * (par_p.r * par_p.c[i_comp] - par_m.r * par_m.c[i_comp]));
-                }
-
-                flx[COMPONENTS_COUNT] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
-                                               - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
-                flx[COMPONENTS_COUNT + 1] =
-                        0.5 * ((par_p.r * par_p.v * par_p.v + par_p.p + par_m.r * par_m.v * par_m.v + par_m.p)
-                               - alpha * (par_p.r * par_p.v - par_m.r * par_m.v));
-                flx[COMPONENTS_COUNT + 2] = 0.5 *
-                                            (((par_p.r * par_p.e_tot + par_p.p) * par_p.v +
-                                              (par_m.r * par_m.e_tot + par_m.p) * par_m.v)
-                                             - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
+                calc_vertical_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -663,45 +580,18 @@ void calc_flx() {
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = CELLS_Y_COUNT; j <= CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
-
+            memset(&int_m, 0, sizeof(data_t));
+            memset(&int_p, 0, sizeof(data_t));
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_y[i][j][i_gp];
                 prim_t par_m, par_p;
+                memset(&par_m, 0, sizeof(prim_t));
+                memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j - 1, pt.x, pt.y, &par_m);
-                {
-                    double cp = 1014.16;
-                    double m_mol = 0.02869409;
-                    double cv = cp - GAS_CONSTANT / m_mol;
-                    double gam = cp / cv;
+                get_bottom_boundary(&par_m, &par_p);
 
-                    par_p.r = par_m.r;
-                    par_p.u = par_m.u;
-                    par_p.v = -par_m.v;
-                    par_p.p = par_m.p;
-                    par_p.e = par_p.p / (par_p.r * (gam - 1.0));
-                    par_p.e_tot = par_p.e + (par_p.u * par_p.u + par_p.v * par_p.v) * 0.5;
-                    par_p.cz = sqrt(gam * par_p.p / par_p.r);
-                    par_p.t = par_p.e / cv;
-
-                }
-                double alpha = _MAX_(par_m.cz + sqrt(par_m.u * par_m.u + par_m.v * par_m.v),
-                                     par_p.cz + sqrt(par_p.u * par_p.u + par_p.v * par_p.v));
-
-                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    flx[i_comp] = 0.5 * ((par_p.r * par_p.c[i_comp] * par_p.v + par_m.r * par_m.c[i_comp] * par_m.v)
-                                         - alpha * (par_p.r * par_p.c[i_comp] - par_m.r * par_m.c[i_comp]));
-                }
-
-                flx[COMPONENTS_COUNT] = 0.5 * ((par_p.r * par_p.u * par_p.v + par_m.r * par_m.u * par_m.v)
-                                               - alpha * (par_p.r * par_p.u - par_m.r * par_m.u));
-                flx[COMPONENTS_COUNT + 1] =
-                        0.5 * ((par_p.r * par_p.v * par_p.v + par_p.p + par_m.r * par_m.v * par_m.v + par_m.p)
-                               - alpha * (par_p.r * par_p.v - par_m.r * par_m.v));
-                flx[COMPONENTS_COUNT + 2] = 0.5 *
-                                            (((par_p.r * par_p.e_tot + par_p.p) * par_p.v +
-                                              (par_m.r * par_m.e_tot + par_m.p) * par_m.v)
-                                             - alpha * (par_p.r * par_p.e_tot - par_m.r * par_m.e_tot));
+                calc_vertical_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -721,7 +611,7 @@ void calc_flx() {
                 }
             }
         }
-    } **/
+    }
 }
 
 void calc_new() {
@@ -842,19 +732,19 @@ void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
     prim->m_mol = m_mol;
 
     for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        prim->c[i] = get_field_rc(i, j, x, y, i) / prim->r;
+        prim->c[i_comp] = get_field_rc(i, j, x, y, i_comp) / ro;
     }
 }
 
 double get_component_cp(int id) {
     //этан, этилен, водород, метан
-    double cps[COMPONENTS_COUNT] = {469.64, 572.57, 14274.97, 925.55};
+    double cps[COMPONENTS_COUNT] = {1014.16/**469.64*/, 572.57, 14274.97, 925.55};
     return cps[id];
 }
 
 double get_component_M(int id) {
     //этан, этилен, водород, метан
-    double Ms[COMPONENTS_COUNT] = {0.03007012, 0.02805418, 0.00201594, 0.01604303};
+    double Ms[COMPONENTS_COUNT] = {0.02869409/**0.03007012*/, 0.02805418, 0.00201594, 0.01604303};
     return Ms[id];
 }
 
@@ -931,32 +821,33 @@ double get_field_rc(int i, int j, double x, double y, int k) {
 
 //todo change
 double reactionSpeed0(double rc[]) {
-    printf("Function 0\n");
-    return 0;
+//    double k1 = 928.979;
+//    double k2 = 244.927;
+    return -k1 * rc[0] - 2 * k2 * rc[0] * rc[0];
 };
 
 double reactionSpeed1(double rc[]) {
-    printf("Function 1\n");
-    return 0;
+//    double k1 = 928.979;
+//    double k2 = 244.927;
+    return k1 * rc[0] + k2 * rc[0] * rc[0];
 };
 
 double reactionSpeed2(double rc[]) {
-    printf("Function 2\n");
-    return 0;
+//    double k1 = 928.979;
+//    double k2 = 244.927;
+    return k1 * rc[0];
 };
 
 double reactionSpeed3(double rc[]) {
-    printf("Function 3\n");
-    return 0;
-};
-
-double reactionSpeed4(double rc[]) {
-    printf("Function 4\n");
-    return 0;
+//    double k1 = 928.979;
+//    double k2 = 244.927;
+    return 2 * k2 * rc[0] * rc[0];
 };
 
 void save_vtk(int num) {
+    char fName[50];
     prim_t pr;
+    memset(&pr, 0, sizeof(prim_t));
     sprintf(fName, "res_%010d.vtk", num);
     FILE *fp = fopen(fName, "w");
     fprintf(fp, "# vtk DataFile Version 2.0\n");
@@ -1021,17 +912,175 @@ void save_vtk(int num) {
         }
     }
 
-    fprintf(fp, "VECTORS Concentrations float\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            for (int k = 0; k < COMPONENTS_COUNT - 1; k++) {
-                fprintf(fp, "%f ", pr.c[k]);
+//    fprintf(fp, "VECTORS Concentrations float\n");
+//    for (int j = 0; j < CELLS_Y_COUNT; j++) {
+//        for (int i = 0; i < CELLS_X_COUNT; i++) {
+//            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
+//            for (int k = 0; k < COMPONENTS_COUNT - 1; k++) {
+//                fprintf(fp, "%f ", pr.c[k]);
+//            }
+//            fprintf(fp, "%f\n", pr.c[COMPONENTS_COUNT - 1]);
+//        }
+//    }
+    for (int k = 0; k < COMPONENTS_COUNT; k++) {
+        fprintf(fp, "SCALARS Concentration%i float 1\nLOOKUP_TABLE default\n", k);
+        for (int j = 0; j < CELLS_Y_COUNT; j++) {
+            for (int i = 0; i < CELLS_X_COUNT; i++) {
+                cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
+                fprintf(fp, "%f\n", pr.r * pr.c[k]);
             }
-            fprintf(fp, "%f\n", pr.c[COMPONENTS_COUNT - 1]);
         }
     }
 
     fclose(fp);
     printf("File '%s' saved...\n", fName);
+}
+
+void calc_prim_params(double cp, double m_mol, prim_t *par) {
+    double cv = cp - GAS_CONSTANT / m_mol;
+    double gam = cp / cv;
+
+    par->e = par->p / (par->r * (gam - 1.0));
+    par->e_tot = par->e + (par->u * par->u + par->v * par->v) * 0.5;
+    par->cz = sqrt(gam * par->p / par->r);
+    par->t = par->e / cv;
+}
+
+void get_left_boundary(prim_t *par_m, prim_t *par_p) {
+    double cp = 1014.16;
+    double m_mol = 0.02869409;
+
+    par_m->r = par_p->r;
+    par_m->u = -par_p->u;
+    par_m->v = par_p->v;
+    par_m->p = par_p->p;
+    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+        par_m->c[i_comp] = par_p->c[i_comp];
+    }
+
+//    double cp = 469.64;
+//    double m_mol = 0.03007012;
+//    double cv = cp - R_GAS / m_mol;
+//    double gam = cp / cv;
+//
+//    par_m->r = 1.293;
+//    par_m->u = 10;
+//    par_m->v = 0.0;
+//    par_m->p = par_m->r * R_GAS * T / m_mol;
+    calc_prim_params(cp, m_mol, par_m);
+}
+
+void get_right_boundary(prim_t *par_m, prim_t *par_p) {
+    double cp = 1014.16;
+    double m_mol = 0.02869409;
+
+    par_p->r = par_m->r;
+    par_p->u = -par_m->u;
+    par_p->v = par_m->v;
+    par_p->p = par_m->p;
+    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+        par_p->c[i_comp] = par_m->c[i_comp];
+    }
+
+//    double cp = 469.64;
+//    double m_mol = 0.03007012;
+//    double cv = cp - R_GAS / m_mol;
+//    double gam = cp / cv;
+//
+//    par_p->r = par_m->r;
+//    par_p->u = par_m->u;
+//    par_p->v = par_m->v;
+//    par_p->p = par_m->p;
+    calc_prim_params(cp, m_mol, par_p);
+}
+
+void get_bottom_boundary(prim_t *par_m, prim_t *par_p) {
+
+    double cp = 1014.16;
+    double m_mol = 0.02869409;
+
+    par_m->r = 12.090;
+    par_m->p = 2.152e+5;
+    par_m->u = 0.0;
+    par_m->v = 97.76;
+    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+        par_m->c[i_comp] = 0.0;
+    }
+    par_m->c[0] = 1.0;
+//    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+//        par_m->c[i_comp] = par_p->c[i_comp];
+//    }
+//    double cp = 469.64;
+//    double m_mol = 0.03007012;
+//    double cv = cp - R_GAS / m_mol;
+//    double gam = cp / cv;
+//
+//    par_m->r = par_p->r;
+//    par_m->p = par_p->p;
+//    par_m->u = par_p->u;
+//    par_m->v = -par_p->v;
+    calc_prim_params(cp, m_mol, par_m);
+}
+
+void get_top_boundary(prim_t *par_m, prim_t *par_p) {
+    double cp = 1014.16;
+    double m_mol = 0.02869409;
+
+    par_p->r = par_m->r;
+    par_p->u = par_m->u;
+    par_p->v = -par_m->v;
+    par_p->p = par_m->p;
+    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+        par_p->c[i_comp] = par_m->c[i_comp];
+    }
+//    double cp = 469.64;
+//    double m_mol = 0.03007012;
+//    double cv = cp - R_GAS / m_mol;
+//    double gam = cp / cv;
+//
+//    par_p->r = par_m->r;
+//    par_p->p = par_m->p;
+//    par_p->u = par_m->u;
+//    par_p->v = -par_m->v;
+    calc_prim_params(cp, m_mol, par_p);
+}
+
+void calc_vertical_flx(prim_t *par_m, prim_t *par_p, double flx[]) {
+    double alpha = _MAX_(par_m->cz + sqrt(par_m->u * par_m->u + par_m->v * par_m->v),
+                         par_p->cz + sqrt(par_p->u * par_p->u + par_p->v * par_p->v));
+
+    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+        flx[i_comp] = 0.5 * ((par_p->c[i_comp] * par_p->r * par_p->u + par_m->c[i_comp] * par_m->r * par_m->u)
+                             - alpha * (par_p->c[i_comp] * par_p->r - par_m->c[i_comp] * par_m->r));
+    }
+
+    flx[COMPONENTS_COUNT] = 0.5 * ((par_p->r * par_p->u * par_p->v + par_m->r * par_m->u * par_m->v)
+                                   - alpha * (par_p->r * par_p->u - par_m->r * par_m->u));
+    flx[COMPONENTS_COUNT + 1] =
+            0.5 * ((par_p->r * par_p->v * par_p->v + par_p->p + par_m->r * par_m->v * par_m->v + par_m->p)
+                   - alpha * (par_p->r * par_p->v - par_m->r * par_m->v));
+    flx[COMPONENTS_COUNT + 2] = 0.5 *
+                                (((par_p->r * par_p->e_tot + par_p->p) * par_p->v +
+                                  (par_m->r * par_m->e_tot + par_m->p) * par_m->v)
+                                 - alpha * (par_p->r * par_p->e_tot - par_m->r * par_m->e_tot));
+}
+
+void calc_horizontal_flx(prim_t *par_m, prim_t *par_p, double flx[]) {
+    double alpha = _MAX_(par_m->cz + sqrt(par_m->u * par_m->u + par_m->v * par_m->v),
+                         par_p->cz + sqrt(par_p->u * par_p->u + par_p->v * par_p->v));
+
+    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+        flx[i_comp] = 0.5 * ((par_p->c[i_comp] * par_p->r * par_p->u + par_m->c[i_comp] * par_m->r * par_m->u)
+                             - alpha * (par_p->c[i_comp] * par_p->r - par_m->c[i_comp] * par_m->r));
+    }
+
+    flx[COMPONENTS_COUNT] =
+            0.5 * ((par_p->r * par_p->u * par_p->u + par_p->p + par_m->r * par_m->u * par_m->u + par_m->p)
+                   - alpha * (par_p->r * par_p->u - par_m->r * par_m->u));
+    flx[COMPONENTS_COUNT + 1] = 0.5 * ((par_p->r * par_p->u * par_p->v + par_m->r * par_m->u * par_m->v)
+                                       - alpha * (par_p->r * par_p->v - par_m->r * par_m->v));
+    flx[COMPONENTS_COUNT + 2] = 0.5 *
+                                (((par_p->r * par_p->e_tot + par_p->p) * par_p->u +
+                                  (par_m->r * par_m->e_tot + par_m->p) * par_m->u)
+                                 - alpha * (par_p->r * par_p->e_tot - par_m->r * par_m->e_tot));
 }
