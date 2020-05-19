@@ -5,7 +5,6 @@
 #ifndef INC_2D_CALC_GLOBAL_H
 #define INC_2D_CALC_GLOBAL_H
 
-
 #define M_PI        3.14159265358979323846
 #define GAS_CONSTANT 8.31446261815324
 
@@ -104,62 +103,12 @@ void calc_new();
 
 void calc_lim();
 
-void zero_r();
-
-void save_vtk(int step);
-
-double bf(int i_func, int i, int j, double x, double y);
-
-double bf_dx(int i_func, int i, int j, double x, double y);
-
-double bf_dy(int i_func, int i, int j, double x, double y);
-
 double get_fld(int i_fld, int i, int j, double x, double y);
 
-double get_field_ru(int i, int j, double x, double y);
+void calc_y_flx(prim_t *par_m, prim_t *par_p, double *flx);
 
-double get_field_rv(int i, int j, double x, double y);
+void calc_x_flx(prim_t *par_m, prim_t *par_p, double *flx);
 
-double get_field_re(int i, int j, double x, double y);
-
-double get_field_rc(int i, int j, double x, double y, int e);
-
-void cons_to_prim(int i, int j, double x, double y, prim_t *prim);
-
-double get_component_cp(int id);
-
-double get_component_M(int id);
-
-double get_cell_cp(int i, int j);
-
-double get_cell_M(int i, int j);
-
-double reactionSpeed0(double[]);
-
-double reactionSpeed1(double[]);
-
-double reactionSpeed2(double[]);
-
-double reactionSpeed3(double[]);
-
-double reactionSpeed4(double[]);
-
-double (*reactionSpeeds[COMPONENTS_COUNT])(double[]) = {reactionSpeed0,
-                                                        reactionSpeed1,
-                                                        reactionSpeed2,
-                                                        reactionSpeed3,
-                                                        reactionSpeed4};
-
-void get_left_boundary(prim_t *par_m, prim_t *par_p);
-
-void get_right_boundary(prim_t *par_m, prim_t *par_p);
-
-void get_bottom_boundary(prim_t *par_m, prim_t *par_p);
-
-void get_top_boundary(prim_t *par_m, prim_t *par_p);
-
-void calc_vertical_flx(prim_t *par_m, prim_t *par_p, double flx[]);
-
-void calc_horizontal_flx(prim_t *par_m, prim_t *par_p, double flx[]);
+void test(int i, int j, prim_t *pr);
 
 #endif //INC_2D_CALC_GLOBAL_H

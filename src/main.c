@@ -1,15 +1,16 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-#include "global.h"
+#include "include/global.h"
+#include "include/basis.h"
+#include "include/utils.h"
+#include "include/chemistry.h"
+#include "include/physics.h"
+#include "include/parameters.h"
 
-double T = 800;
-double k1 = 0.503;
-double k2 = 0.073;
-
+int step = 0;
 int main(int argc, char **argv) {
     double t = 0.0;
-    int step = 0;
 
     init();
     save_vtk(step);
@@ -26,57 +27,6 @@ int main(int argc, char **argv) {
         if (step % SAVE_STEP == 0) save_vtk(step);
     }
     return 0;
-}
-
-void inverse_matr(double a_src[BASE_FN_COUNT][BASE_FN_COUNT],
-                  double am[BASE_FN_COUNT][BASE_FN_COUNT], int N) {
-    double a[BASE_FN_COUNT][BASE_FN_COUNT];
-    for (int i = 0; i < BASE_FN_COUNT; i++) {
-        for (int j = 0; j < BASE_FN_COUNT; j++) {
-            a[i][j] = a_src[i][j];
-        }
-    }
-    double detA = a[0][0] * a[1][1] * a[2][2] + a[1][0] * a[2][1] * a[0][2] + a[0][1] * a[1][2] * a[2][0]
-                  - a[2][0] * a[1][1] * a[0][2] - a[1][0] * a[0][1] * a[2][2] - a[0][0] * a[2][1] * a[1][2];
-
-    double m[3][3];
-    m[0][0] = a[1][1] * a[2][2] - a[2][1] * a[1][2];
-    m[0][1] = a[2][0] * a[1][2] - a[1][0] * a[2][2];
-    m[0][2] = a[1][0] * a[2][1] - a[2][0] * a[1][1];
-    m[1][0] = a[2][1] * a[0][2] - a[0][1] * a[2][2];
-    m[1][1] = a[0][0] * a[2][2] - a[2][0] * a[0][2];
-    m[1][2] = a[2][0] * a[0][1] - a[0][0] * a[2][1];
-    m[2][0] = a[0][1] * a[1][2] - a[1][1] * a[0][2];
-    m[2][1] = a[1][0] * a[0][2] - a[0][0] * a[1][2];
-    m[2][2] = a[0][0] * a[1][1] - a[1][0] * a[0][1];
-
-    am[0][0] = m[0][0] / detA;
-    am[0][1] = m[1][0] / detA;
-    am[0][2] = m[2][0] / detA;
-    am[1][0] = m[0][1] / detA;
-    am[1][1] = m[1][1] / detA;
-    am[1][2] = m[2][1] / detA;
-    am[2][0] = m[0][2] / detA;
-    am[2][1] = m[1][2] / detA;
-    am[2][2] = m[2][2] / detA;
-}
-
-void mult_matr_vec(double matr[BASE_FN_COUNT][BASE_FN_COUNT], double vec[BASE_FN_COUNT],
-                   double res[BASE_FN_COUNT]) {
-    for (int i = 0; i < BASE_FN_COUNT; i++) {
-        res[i] = 0.0;
-        for (int j = 0; j < BASE_FN_COUNT; j++) {
-            res[i] += matr[i][j] * vec[j];
-        }
-    }
-}
-
-void zero_r() {
-    for (int i = 0; i < CELLS_X_COUNT; i++) {
-        for (int j = 0; j < CELLS_Y_COUNT; j++) {
-            memset(&r_int[i][j], 0, sizeof(data_t));
-        }
-    }
 }
 
 void init() {
@@ -193,9 +143,6 @@ void init() {
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
                 r += rc[i_comp];
             }
-
-            u = 0.0;
-            v = 0.0;
 
             cp_mix = 0.0;
             for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
@@ -393,6 +340,7 @@ void calc_flx() {
             data_t int_m, int_p;
             memset(&int_m, 0, sizeof(data_t));
             memset(&int_p, 0, sizeof(data_t));
+
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
@@ -401,7 +349,7 @@ void calc_flx() {
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
-                calc_horizontal_flx(&par_m, &par_p, flx);
+                calc_x_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -432,6 +380,7 @@ void calc_flx() {
             data_t int_m, int_p;
             memset(&int_m, 0, sizeof(data_t));
             memset(&int_p, 0, sizeof(data_t));
+
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_y[i][j][i_gp];
                 prim_t par_m, par_p;
@@ -440,7 +389,7 @@ void calc_flx() {
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j - 1, pt.x, pt.y, &par_m);
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
-                calc_vertical_flx(&par_m, &par_p, flx);
+                calc_y_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -471,6 +420,7 @@ void calc_flx() {
             data_t int_m, int_p;
             memset(&int_m, 0, sizeof(data_t));
             memset(&int_p, 0, sizeof(data_t));
+
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
@@ -480,7 +430,7 @@ void calc_flx() {
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
                 get_left_boundary(&par_m, &par_p);
 
-                calc_horizontal_flx(&par_m, &par_p, flx);
+                calc_x_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -508,6 +458,11 @@ void calc_flx() {
             data_t int_m, int_p;
             memset(&int_m, 0, sizeof(data_t));
             memset(&int_p, 0, sizeof(data_t));
+
+            if (step == 4) {
+                printf("Stop!\n");
+            }
+
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
@@ -517,7 +472,7 @@ void calc_flx() {
                 cons_to_prim(i - 1, j, pt.x, pt.y, &par_m);
                 get_right_boundary(&par_m, &par_p);
 
-                calc_horizontal_flx(&par_m, &par_p, flx);
+                calc_x_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -554,7 +509,7 @@ void calc_flx() {
                 cons_to_prim(i, j, pt.x, pt.y, &par_p);
                 get_bottom_boundary(&par_m, &par_p);
 
-                calc_vertical_flx(&par_m, &par_p, flx);
+                calc_y_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -589,9 +544,9 @@ void calc_flx() {
                 memset(&par_p, 0, sizeof(prim_t));
                 double flx[3 + COMPONENTS_COUNT];
                 cons_to_prim(i, j - 1, pt.x, pt.y, &par_m);
-                get_bottom_boundary(&par_m, &par_p);
+                get_top_boundary(&par_m, &par_p);
 
-                calc_vertical_flx(&par_m, &par_p, flx);
+                calc_y_flx(&par_m, &par_p, flx);
 
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -624,15 +579,13 @@ void calc_new() {
                     data[i][j].fields[i_fld][k] += TAU * tmp[k];
                 }
             }
-        }
-    }
-}
+            prim_t test_prim;
+            test(i, j, &test_prim);
+            if (test_prim.r != test_prim.r) {
+                printf("Density in %i %i Is NAN!!!11\n", i, j);
+            }
 
-double _minmod(double a, double b, double c) {
-    if ((_SIGN_(a) == _SIGN_(b)) && (_SIGN_(b) == _SIGN_(c))) {
-        return _SIGN_(a) * _MIN_(_MIN_(fabs(a), fabs(b)), fabs(c));
-    } else {
-        return 0.0;
+        }
     }
 }
 
@@ -662,390 +615,7 @@ void calc_lim() {
     }
 }
 
-double bf(int i_func, int i, int j, double x, double y) {
-    switch (i_func) {
-        case 0:
-            return 1.0;
-            break;
-        case 1:
-            return (x - center_cell[i][j].x) / HX;
-            break;
-        case 2:
-            return (y - center_cell[i][j].y) / HY;
-            break;
-    }
-}
-
-double bf_dx(int i_func, int i, int j, double x, double y) {
-    switch (i_func) {
-        case 0:
-            return 0.0;
-            break;
-        case 1:
-            return 1.0 / HX;
-            break;
-        case 2:
-            return 0.0;
-            break;
-    }
-}
-
-double bf_dy(int i_func, int i, int j, double x, double y) {
-    switch (i_func) {
-        case 0:
-            return 0.0;
-            break;
-        case 1:
-            return 0.0;
-            break;
-        case 2:
-            return 1.0 / HY;
-            break;
-    }
-}
-
-void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
-    double cp = get_cell_cp(i, j);
-    double m_mol = get_cell_M(i, j);
-
-    double cv = cp - GAS_CONSTANT / m_mol;
-    double gam = cp / cv;
-
-    double ro = 0;
-    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        ro += get_field_rc(i, j, x, y, i_comp);
-    }
-    double ru = get_field_ru(i, j, x, y);
-    double rv = get_field_rv(i, j, x, y);
-    double re = get_field_re(i, j, x, y);
-
-    prim->r = ro;
-    prim->u = ru / ro;
-    prim->v = rv / ro;
-    prim->e_tot = re / ro;
-    prim->e = prim->e_tot - (prim->u * prim->u + prim->v * prim->v) * 0.5;
-    prim->p = prim->r * prim->e * (gam - 1.0);
-    prim->cz = sqrt(gam * prim->p / prim->r);
-    prim->t = prim->e / cv;
-
-    prim->cp = cp;
-    prim->m_mol = m_mol;
-
-    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        prim->c[i_comp] = get_field_rc(i, j, x, y, i_comp) / ro;
-    }
-}
-
-double get_component_cp(int id) {
-    //этан, этилен, водород, метан
-    double cps[COMPONENTS_COUNT] = {1014.16/**469.64*/, 572.57, 14274.97, 925.55};
-    return cps[id];
-}
-
-double get_component_M(int id) {
-    //этан, этилен, водород, метан
-    double Ms[COMPONENTS_COUNT] = {0.02869409/**0.03007012*/, 0.02805418, 0.00201594, 0.01604303};
-    return Ms[id];
-}
-
-double get_cell_cp(int i, int j) {
-    double cp = 0;
-    double gjw;
-
-    for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-        for (int igp = 0; igp < GP_CELL_COUNT; igp++) {
-            gjw = gj_cell[i][j] * gw_cell[i][j][igp] / (HX * HY);
-            cp += get_field_rc(i, j, gp_cell[i][j][igp].x, gp_cell[i][j][igp].y, i_com) * get_component_cp(i_com) *
-                  gjw;
-        }
-    }
-
-    return cp;
-}
-
-double get_cell_M(int i, int j) {
-
-    double M = 0;
-    double gjw;
-
-    for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-        for (int igp = 0; igp < GP_CELL_COUNT; igp++) {
-            gjw = gj_cell[i][j] * gw_cell[i][j][igp] / (HX * HY);
-            M += get_field_rc(i, j, gp_cell[i][j][igp].x, gp_cell[i][j][igp].y, i_com) / get_component_M(i_com) *
-                 gjw;
-        }
-    }
-
-    return 1 / M;
-}
-
-double get_field_ru(int i, int j, double x, double y) {
-    double result = 0.;
-    int i_func;
-
-    for (i_func = 0; i_func < BASE_FN_COUNT; i_func++) {
-        result += data[i][j].ru[i_func] * bf(i_func, i, j, x, y);
-    }
-    return result;
-}
-
-double get_field_rv(int i, int j, double x, double y) {
-    double result = 0.;
-    int i_func;
-
-    for (i_func = 0; i_func < BASE_FN_COUNT; i_func++) {
-        result += data[i][j].rv[i_func] * bf(i_func, i, j, x, y);
-    }
-    return result;
-}
-
-double get_field_re(int i, int j, double x, double y) {
-    double result = 0.;
-    int i_func;
-
-    for (i_func = 0; i_func < BASE_FN_COUNT; i_func++) {
-        result += data[i][j].re[i_func] * bf(i_func, i, j, x, y);
-    }
-    return result;
-}
-
-double get_field_rc(int i, int j, double x, double y, int k) {
-    double result = 0.;
-    int i_func;
-
-    for (i_func = 0; i_func < BASE_FN_COUNT; i_func++) {
-        result += data[i][j].rc[i_func][k] * bf(i_func, i, j, x, y);
-    }
-    return result;
-}
-
-//todo change
-double reactionSpeed0(double rc[]) {
-//    double k1 = 928.979;
-//    double k2 = 244.927;
-    return -k1 * rc[0] - 2 * k2 * rc[0] * rc[0];
-};
-
-double reactionSpeed1(double rc[]) {
-//    double k1 = 928.979;
-//    double k2 = 244.927;
-    return k1 * rc[0] + k2 * rc[0] * rc[0];
-};
-
-double reactionSpeed2(double rc[]) {
-//    double k1 = 928.979;
-//    double k2 = 244.927;
-    return k1 * rc[0];
-};
-
-double reactionSpeed3(double rc[]) {
-//    double k1 = 928.979;
-//    double k2 = 244.927;
-    return 2 * k2 * rc[0] * rc[0];
-};
-
-void save_vtk(int num) {
-    char fName[50];
-    prim_t pr;
-    memset(&pr, 0, sizeof(prim_t));
-    sprintf(fName, "res_%010d.vtk", num);
-    FILE *fp = fopen(fName, "w");
-    fprintf(fp, "# vtk DataFile Version 2.0\n");
-    fprintf(fp, "GASDIN data file\n");
-    fprintf(fp, "ASCII\n");
-    fprintf(fp, "DATASET STRUCTURED_GRID\n");
-    fprintf(fp, "DIMENSIONS %d %d %d\n", CELLS_X_COUNT + 1, CELLS_Y_COUNT + 1, 1);
-    fprintf(fp, "POINTS %d float\n", (CELLS_X_COUNT + 1) * (CELLS_Y_COUNT + 1));
-    for (int j = 0; j <= CELLS_Y_COUNT; j++) {
-        for (int i = 0; i <= CELLS_X_COUNT; i++) {
-            double x = X_MIN + i * HX;
-            double y = Y_MIN + j * HY;
-            fprintf(fp, "%f %f %f\n", x, y, 0.0);
-        }
-    }
-    fprintf(fp, "CELL_DATA %d\n", CELLS_X_COUNT * CELLS_Y_COUNT);
-    fprintf(fp, "SCALARS Density float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            fprintf(fp, "%f\n", pr.r);
-        }
-    }
-
-    fprintf(fp, "SCALARS Pressure float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            fprintf(fp, "%f\n", pr.p);
-        }
-    }
-
-    fprintf(fp, "SCALARS TotEnergy float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            fprintf(fp, "%f\n", pr.e_tot);
-        }
-    }
-
-    fprintf(fp, "SCALARS Energy float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            fprintf(fp, "%f\n", pr.e);
-        }
-    }
-
-    fprintf(fp, "VECTORS Velosity float\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            fprintf(fp, "%f %f %f\n", pr.u, pr.v, 0.0);
-        }
-    }
-
-    fprintf(fp, "SCALARS Temperature float 1\nLOOKUP_TABLE default\n");
-    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-        for (int i = 0; i < CELLS_X_COUNT; i++) {
-            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-            fprintf(fp, "%f\n", pr.t);
-        }
-    }
-
-//    fprintf(fp, "VECTORS Concentrations float\n");
-//    for (int j = 0; j < CELLS_Y_COUNT; j++) {
-//        for (int i = 0; i < CELLS_X_COUNT; i++) {
-//            cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-//            for (int k = 0; k < COMPONENTS_COUNT - 1; k++) {
-//                fprintf(fp, "%f ", pr.c[k]);
-//            }
-//            fprintf(fp, "%f\n", pr.c[COMPONENTS_COUNT - 1]);
-//        }
-//    }
-    for (int k = 0; k < COMPONENTS_COUNT; k++) {
-        fprintf(fp, "SCALARS Concentration%i float 1\nLOOKUP_TABLE default\n", k);
-        for (int j = 0; j < CELLS_Y_COUNT; j++) {
-            for (int i = 0; i < CELLS_X_COUNT; i++) {
-                cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-                fprintf(fp, "%f\n", pr.r * pr.c[k]);
-            }
-        }
-    }
-
-    fclose(fp);
-    printf("File '%s' saved...\n", fName);
-}
-
-void calc_prim_params(double cp, double m_mol, prim_t *par) {
-    double cv = cp - GAS_CONSTANT / m_mol;
-    double gam = cp / cv;
-
-    par->e = par->p / (par->r * (gam - 1.0));
-    par->e_tot = par->e + (par->u * par->u + par->v * par->v) * 0.5;
-    par->cz = sqrt(gam * par->p / par->r);
-    par->t = par->e / cv;
-}
-
-void get_left_boundary(prim_t *par_m, prim_t *par_p) {
-    double cp = 1014.16;
-    double m_mol = 0.02869409;
-
-    par_m->r = par_p->r;
-    par_m->u = -par_p->u;
-    par_m->v = par_p->v;
-    par_m->p = par_p->p;
-    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        par_m->c[i_comp] = par_p->c[i_comp];
-    }
-
-//    double cp = 469.64;
-//    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
-//
-//    par_m->r = 1.293;
-//    par_m->u = 10;
-//    par_m->v = 0.0;
-//    par_m->p = par_m->r * R_GAS * T / m_mol;
-    calc_prim_params(cp, m_mol, par_m);
-}
-
-void get_right_boundary(prim_t *par_m, prim_t *par_p) {
-    double cp = 1014.16;
-    double m_mol = 0.02869409;
-
-    par_p->r = par_m->r;
-    par_p->u = -par_m->u;
-    par_p->v = par_m->v;
-    par_p->p = par_m->p;
-    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        par_p->c[i_comp] = par_m->c[i_comp];
-    }
-
-//    double cp = 469.64;
-//    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
-//
-//    par_p->r = par_m->r;
-//    par_p->u = par_m->u;
-//    par_p->v = par_m->v;
-//    par_p->p = par_m->p;
-    calc_prim_params(cp, m_mol, par_p);
-}
-
-void get_bottom_boundary(prim_t *par_m, prim_t *par_p) {
-
-    double cp = 1014.16;
-    double m_mol = 0.02869409;
-
-    par_m->r = 12.090;
-    par_m->p = 2.152e+5;
-    par_m->u = 0.0;
-    par_m->v = 97.76;
-    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        par_m->c[i_comp] = 0.0;
-    }
-    par_m->c[0] = 1.0;
-//    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-//        par_m->c[i_comp] = par_p->c[i_comp];
-//    }
-//    double cp = 469.64;
-//    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
-//
-//    par_m->r = par_p->r;
-//    par_m->p = par_p->p;
-//    par_m->u = par_p->u;
-//    par_m->v = -par_p->v;
-    calc_prim_params(cp, m_mol, par_m);
-}
-
-void get_top_boundary(prim_t *par_m, prim_t *par_p) {
-    double cp = 1014.16;
-    double m_mol = 0.02869409;
-
-    par_p->r = par_m->r;
-    par_p->u = par_m->u;
-    par_p->v = -par_m->v;
-    par_p->p = par_m->p;
-    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        par_p->c[i_comp] = par_m->c[i_comp];
-    }
-//    double cp = 469.64;
-//    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
-//
-//    par_p->r = par_m->r;
-//    par_p->p = par_m->p;
-//    par_p->u = par_m->u;
-//    par_p->v = -par_m->v;
-    calc_prim_params(cp, m_mol, par_p);
-}
-
-void calc_vertical_flx(prim_t *par_m, prim_t *par_p, double flx[]) {
+void calc_y_flx(prim_t *par_m, prim_t *par_p, double *flx) {
     double alpha = _MAX_(par_m->cz + sqrt(par_m->u * par_m->u + par_m->v * par_m->v),
                          par_p->cz + sqrt(par_p->u * par_p->u + par_p->v * par_p->v));
 
@@ -1065,7 +635,7 @@ void calc_vertical_flx(prim_t *par_m, prim_t *par_p, double flx[]) {
                                  - alpha * (par_p->r * par_p->e_tot - par_m->r * par_m->e_tot));
 }
 
-void calc_horizontal_flx(prim_t *par_m, prim_t *par_p, double flx[]) {
+void calc_x_flx(prim_t *par_m, prim_t *par_p, double *flx) {
     double alpha = _MAX_(par_m->cz + sqrt(par_m->u * par_m->u + par_m->v * par_m->v),
                          par_p->cz + sqrt(par_p->u * par_p->u + par_p->v * par_p->v));
 
@@ -1083,4 +653,9 @@ void calc_horizontal_flx(prim_t *par_m, prim_t *par_p, double flx[]) {
                                 (((par_p->r * par_p->e_tot + par_p->p) * par_p->u +
                                   (par_m->r * par_m->e_tot + par_m->p) * par_m->u)
                                  - alpha * (par_p->r * par_p->e_tot - par_m->r * par_m->e_tot));
+}
+
+void test(int i, int j, prim_t *pr) {
+    memset(pr, 0, sizeof(prim_t));
+    cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, pr);
 }
