@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
         step++;
         printf("%i\n", step);
         zero_r();
-        //calc_cnc();
+        calc_cnc();
         calc_int();
         calc_flx();
         calc_new();
@@ -229,6 +229,11 @@ void calc_cnc() {
                     }
                     old_rc[i_com] *= q_gj_cell[i_quad] / (HX * HY / 4);
                 }
+                double temperature = 0.0;
+                for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
+                    temperature += get_field_T(i, j, q_gp_cell[i_quad][i_gp].x, q_gp_cell[i_quad][i_gp].y) * q_gw_cell[i_quad][i_gp];
+                }
+                temperature *= q_gj_cell[i_quad] / (HX * HY / 4);
                 //решаем систему диффуров относительно интегральных средних для концентраций
                 double t = 0.0;
                 double dt = TAU / 10;
@@ -236,7 +241,7 @@ void calc_cnc() {
                 while (t < TAU) {
                     t += dt;
                     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                        new_rc[i_com] = old_rc[i_com] + dt * reactionSpeeds[i_com](old_rc);
+                        new_rc[i_com] = old_rc[i_com] + dt * reactionSpeeds[i_com](old_rc, temperature);
                     }
 
                     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
@@ -459,9 +464,9 @@ void calc_flx() {
             memset(&int_m, 0, sizeof(data_t));
             memset(&int_p, 0, sizeof(data_t));
 
-            if (step == 4) {
-                printf("Stop!\n");
-            }
+//            if (step == 4) {
+//                printf("Stop!\n");
+//            }
 
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
@@ -474,6 +479,7 @@ void calc_flx() {
 
                 calc_x_flx(&par_m, &par_p, flx);
 
+
                 for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                     for (int k = 0; k < BASE_FN_COUNT; k++) {
                         int_m.fields[i_fld][k] += gw_edge_x[i][j][i_gp] * flx[i_fld] * bf(k, i - 1, j, pt.x, pt.y);
@@ -485,6 +491,7 @@ void calc_flx() {
                     int_m.fields[i_fld][k] *= gj_edge_x[i][j];
                 }
             }
+
 
             for (int i_fld = 0; i_fld < 3 + COMPONENTS_COUNT; i_fld++) {
                 for (int k = 0; k < BASE_FN_COUNT; k++) {
@@ -532,6 +539,9 @@ void calc_flx() {
     }
 
     // Top
+    if (step == 26) {
+        printf("Density in %i %i Is NAN!!!11\n");
+    }
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = CELLS_Y_COUNT; j <= CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;
@@ -579,11 +589,11 @@ void calc_new() {
                     data[i][j].fields[i_fld][k] += TAU * tmp[k];
                 }
             }
-            prim_t test_prim;
-            test(i, j, &test_prim);
-            if (test_prim.r != test_prim.r) {
-                printf("Density in %i %i Is NAN!!!11\n", i, j);
-            }
+//            prim_t test_prim;
+//            test(i, j, &test_prim);
+//            if (test_prim.r != test_prim.r) {
+//                printf("Density in %i %i Is NAN!!!11\n", i, j);
+//            }
 
         }
     }
@@ -620,7 +630,7 @@ void calc_y_flx(prim_t *par_m, prim_t *par_p, double *flx) {
                          par_p->cz + sqrt(par_p->u * par_p->u + par_p->v * par_p->v));
 
     for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-        flx[i_comp] = 0.5 * ((par_p->c[i_comp] * par_p->r * par_p->u + par_m->c[i_comp] * par_m->r * par_m->u)
+        flx[i_comp] = 0.5 * ((par_p->c[i_comp] * par_p->r * par_p->v + par_m->c[i_comp] * par_m->r * par_m->v)
                              - alpha * (par_p->c[i_comp] * par_p->r - par_m->c[i_comp] * par_m->r));
     }
 

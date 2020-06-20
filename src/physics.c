@@ -29,8 +29,6 @@ void get_left_boundary(prim_t *par_m, prim_t *par_p) {
 
 //    double cp = 469.64;
 //    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
 //
 //    par_m->r = 1.293;
 //    par_m->u = 10;
@@ -53,8 +51,6 @@ void get_right_boundary(prim_t *par_m, prim_t *par_p) {
 
 //    double cp = 469.64;
 //    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
 //
 //    par_p->r = par_m->r;
 //    par_p->u = par_m->u;
@@ -67,8 +63,6 @@ void get_bottom_boundary(prim_t *par_m, prim_t *par_p) {
 
     double cp = 1014.16;
     double m_mol = 0.02869409;
-    double cv = cp - GAS_CONSTANT / m_mol;
-    double gam = cp / cv;
 
     par_m->r = 12.090;
     par_m->u = 0.0;
@@ -84,8 +78,6 @@ void get_bottom_boundary(prim_t *par_m, prim_t *par_p) {
 //    }
 //    double cp = 469.64;
 //    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
 //
 //    par_m->r = par_p->r;
 //    par_m->p = par_p->p;
@@ -107,8 +99,6 @@ void get_top_boundary(prim_t *par_m, prim_t *par_p) {
     }
 //    double cp = 469.64;
 //    double m_mol = 0.03007012;
-//    double cv = cp - R_GAS / m_mol;
-//    double gam = cp / cv;
 //
 //    par_p->r = par_m->r;
 //    par_p->p = par_m->p;

@@ -15,7 +15,9 @@ double get_field_rv(int i, int j, double x, double y);
 
 double get_field_re(int i, int j, double x, double y);
 
-double get_field_rc(int i, int j, double x, double y, int e);
+double get_field_rc(int i, int j, double x, double y, int i_com);
+
+double get_field_T(int i, int j, double x, double y);
 
 void cons_to_prim(int i, int j, double x, double y, prim_t *prim);
 

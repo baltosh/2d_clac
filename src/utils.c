@@ -150,7 +150,7 @@ void save_vtk(int num) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
             for (int i = 0; i < CELLS_X_COUNT; i++) {
                 cons_to_prim(i, j, center_cell[i][j].x, center_cell[i][j].y, &pr);
-                fprintf(fp, "%f\n", pr.r * pr.c[k]);
+                fprintf(fp, "%f\n", pr.c[k]);
             }
         }
     }
