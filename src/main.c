@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 #include "include/global.h"
 #include "include/basis.h"
 #include "include/utils.h"
@@ -173,6 +174,9 @@ void init() {
 void calc_cnc() {
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = 0; j < CELLS_Y_COUNT; j++) {
+
+            double quad_rc[4][COMPONENTS_COUNT];
+
             point_t center = center_cell[i][j];
             //первый квадрат x < xc, y > yc
             q_point[0][0].x = center.x - HX / 2;
@@ -205,10 +209,12 @@ void calc_cnc() {
                 p[2].y = 1.0 / sqrt(3.0);
                 p[3].x = -1.0 / sqrt(3.0);
                 p[3].y = 1.0 / sqrt(3.0);
+
                 double xmin = q_point[i_quad][0].x;
                 double ymin = q_point[i_quad][0].y;
                 double xmax = q_point[i_quad][1].x;
                 double ymax = q_point[i_quad][1].y;
+
                 for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
                     q_gp_cell[i_quad][i_gp].x = 0.5 * (xmin + xmax) + p[i_gp].x * (xmax - xmin) * 0.5;
                     q_gp_cell[i_quad][i_gp].y = 0.5 * (ymin + ymax) + p[i_gp].y * (ymax - ymin) * 0.5;
@@ -219,15 +225,15 @@ void calc_cnc() {
             //считаем интегральные средние для концентраций на начальный момент
             for (int i_quad = 0; i_quad < 4; i_quad++) {
                 double old_rc[COMPONENTS_COUNT], new_rc[COMPONENTS_COUNT];
-                for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                    old_rc[i_com] = 0.0;
+                for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+                    old_rc[i_comp] = 0.0;
 
                     for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
-                        old_rc[i_com] +=
-                                get_field_rc(i, j, q_gp_cell[i_quad][i_gp].x, q_gp_cell[i_quad][i_gp].y, i_com) *
+                        old_rc[i_comp] +=
+                                get_field_rc(i, j, q_gp_cell[i_quad][i_gp].x, q_gp_cell[i_quad][i_gp].y, i_comp) *
                                 q_gw_cell[i_quad][i_gp];
                     }
-                    old_rc[i_com] *= q_gj_cell[i_quad] / (HX * HY / 4);
+                    old_rc[i_comp] *= q_gj_cell[i_quad] / (HX * HY / 4);
                 }
                 double temperature = 0.0;
                 for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
@@ -240,48 +246,52 @@ void calc_cnc() {
 
                 while (t < TAU) {
                     t += dt;
-                    for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                        new_rc[i_com] = old_rc[i_com] + dt * reactionSpeeds[i_com](old_rc, temperature);
+                    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+                        new_rc[i_comp] = old_rc[i_comp] + dt * reactionSpeeds[i_comp](old_rc, temperature);
                     }
 
-                    for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
-                        old_rc[i_com] = new_rc[i_com];
+                    for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+                        old_rc[i_comp] = new_rc[i_comp];
                     }
                 }
                 //интегральные средние для концентраций в новый момент времени в переменной old_rc
-                //находим координаты разложение функций концентраций на базисные функции
-                double rc_bf[BASE_FN_COUNT], b[BASE_FN_COUNT];
                 for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
-                    for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
-                        b[i_bf] = 0.0;
-
-                        for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
-                            point_t gauss_point = gp_cell[i][j][i_gp];
-                            double rc_cap;
-                            if (gauss_point.x < center.x) {
-                                if (gauss_point.y < center.y) {
-                                    rc_cap = old_rc[2];
-                                } else {
-                                    rc_cap = old_rc[0];
-                                }
-                            } else {
-                                if (gauss_point.y < gauss_point.y) {
-                                    rc_cap = old_rc[3];
-                                } else {
-                                    rc_cap = old_rc[1];
-                                }
-                            }
-
-                            b[i_bf] += rc_cap * bf(i_bf, i, j, gauss_point.x, gauss_point.y) * gw_cell[i][j][i_gp];
-                        }
-                        b[i_bf] *= gj_cell[i][j];
-                    }
-
-                    mult_matr_vec(matr_a[i][j], b, rc_bf);
-                    for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
-                        data[i][j].rc[i_comp][i_bf] = rc_bf[i_bf];
-                    }
+                    quad_rc[i_quad][i_comp] = old_rc[i_comp];
                 }
+            }
+            //находим координаты разложение функций концентраций на базисные функции
+            double rc_bf[BASE_FN_COUNT], b[BASE_FN_COUNT];
+            for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
+                for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
+                    b[i_bf] = 0.0;
+
+                    for (int i_gp = 0; i_gp < GP_CELL_COUNT; i_gp++) {
+                        point_t gauss_point = gp_cell[i][j][i_gp];
+                        double rc_cap;
+                        if (gauss_point.x < center.x) {
+                            if (gauss_point.y < center.y) {
+                                rc_cap = quad_rc[2][i_comp];
+                            } else {
+                                rc_cap = quad_rc[0][i_comp];
+                            }
+                        } else {
+                            if (gauss_point.y < gauss_point.y) {
+                                rc_cap = quad_rc[3][i_comp];
+                            } else {
+                                rc_cap = quad_rc[1][i_comp];
+                            }
+                        }
+
+                        b[i_bf] += rc_cap * bf(i_bf, i, j, gauss_point.x, gauss_point.y) * gw_cell[i][j][i_gp];
+                    }
+                    b[i_bf] *= gj_cell[i][j];
+                }
+
+                mult_matr_vec(matr_a[i][j], b, rc_bf);
+                for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
+                    data[i][j].rc[i_comp][i_bf] = rc_bf[i_bf];
+                }
+                system("pause");
             }
         }
     }

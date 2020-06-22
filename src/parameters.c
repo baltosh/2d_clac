@@ -53,34 +53,31 @@ double get_component_M(int id) {
 
 double get_cell_cp(int i, int j) {
     double cp = 0;
-    double gjw;
 
     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
         for (int igp = 0; igp < GP_CELL_COUNT; igp++) {
-            gjw = gj_cell[i][j] * gw_cell[i][j][igp] / (HX * HY);
             cp += get_field_rc(i, j, gp_cell[i][j][igp].x, gp_cell[i][j][igp].y, i_com) /
                   get_field_ro(i, j, gp_cell[i][j][igp].x, gp_cell[i][j][igp].y) * get_component_cp(i_com) *
-                  gjw;
+                  gw_cell[i][j][igp];
         }
     }
 
+    cp *= gj_cell[i][j] / (HX * HY);
     return cp;
 }
 
 double get_cell_M(int i, int j) {
-
     double M = 0;
-    double gjw;
 
     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
         for (int igp = 0; igp < GP_CELL_COUNT; igp++) {
-            gjw = gj_cell[i][j] * gw_cell[i][j][igp] / (HX * HY);
             M += get_field_rc(i, j, gp_cell[i][j][igp].x, gp_cell[i][j][igp].y, i_com) /
                  get_field_ro(i, j, gp_cell[i][j][igp].x, gp_cell[i][j][igp].y) / get_component_M(i_com) *
-                 gjw;
+                 gw_cell[i][j][igp];
         }
     }
 
+    M *= gj_cell[i][j] / (HX * HY);
     return 1 / M;
 }
 

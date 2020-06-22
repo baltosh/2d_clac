@@ -18,8 +18,8 @@
 
 #define X_MIN   0.0
 #define X_MAX   0.04
-#define Y_MIN  -0.1
-#define Y_MAX   0.3
+#define Y_MIN   0.0
+#define Y_MAX   0.4
 
 #define TAU     5.0e-8
 #define TIME_MAX 2.5e-3
