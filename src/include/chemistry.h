@@ -6,6 +6,7 @@
 #define INC_2D_CALC_CHEMISTRY_H
 
 #include "global.h"
+#include "math.h"
 
 double reactionSpeed0(double[], double);
 
@@ -24,5 +25,9 @@ double k1(double);
 double k2(double);
 
 double arrheniusEq(double, double, double);
+
+double get_component_cp(int id);
+
+double get_component_M(int id);
 
 #endif //INC_2D_CALC_CHEMISTRY_H

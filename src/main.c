@@ -118,22 +118,27 @@ void init() {
             double r, p, u, v, cp_mix, m_mol_mix;
             double rc[COMPONENTS_COUNT];
 
-            if (y < -0.005) {
-                r = 12.090;
-                p = 2.152e+5;
-                u = 0.0;
-                v = 97.76;
-            } else if (y > HY * sin(M_PI * x / 0.01)) {
-                r = 1.198;
-                p = 1.e+5;
-                u = 0.0;
-                v = 0.0;
-            } else {
-                r = 6.037;
-                p = 1.e+5;
-                u = 0.0;
-                v = 0.0;
-            }
+//            if (y < -0.005) {
+//                r = 12.090;
+//                p = 2.152e+5;
+//                u = 0.0;
+//                v = 97.76;
+//            } else if (y > HY * sin(M_PI * x / 0.01)) {
+//                r = 1.198;
+//                p = 1.e+5;
+//                u = 0.0;
+//                v = 0.0;
+//            } else {
+//                r = 6.037;
+//                p = 1.e+5;
+//                u = 0.0;
+//                v = 0.0;
+//            }
+
+            r = 12.293;
+            p = 30.e+5;
+            u = 0.0;
+            v = 0.0;
 
             rc[0] = r;
             rc[1] = 0;
@@ -242,7 +247,7 @@ void calc_cnc() {
                 temperature *= q_gj_cell[i_quad] / (HX * HY / 4);
                 //решаем систему диффуров относительно интегральных средних для концентраций
                 double t = 0.0;
-                double dt = TAU / 10;
+                double dt = TAU;// / 10;
 
                 while (t < TAU) {
                     t += dt;
@@ -291,7 +296,6 @@ void calc_cnc() {
                 for (int i_bf = 0; i_bf < BASE_FN_COUNT; i_bf++) {
                     data[i][j].rc[i_comp][i_bf] = rc_bf[i_bf];
                 }
-                system("pause");
             }
         }
     }
@@ -474,10 +478,6 @@ void calc_flx() {
             memset(&int_m, 0, sizeof(data_t));
             memset(&int_p, 0, sizeof(data_t));
 
-//            if (step == 4) {
-//                printf("Stop!\n");
-//            }
-
             for (int i_gp = 0; i_gp < GP_EDGE_COUNT; i_gp++) {
                 point_t pt = gp_edge_x[i][j][i_gp];
                 prim_t par_m, par_p;
@@ -549,9 +549,6 @@ void calc_flx() {
     }
 
     // Top
-    if (step == 26) {
-        printf("Density in %i %i Is NAN!!!11\n");
-    }
     for (int i = 0; i < CELLS_X_COUNT; i++) {
         for (int j = CELLS_Y_COUNT; j <= CELLS_Y_COUNT; j++) {
             data_t int_m, int_p;

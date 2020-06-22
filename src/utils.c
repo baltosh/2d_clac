@@ -3,10 +3,6 @@
 //
 
 #include "include/utils.h"
-#include "include/parameters.h"
-#include <stdio.h>
-#include <math.h>
-#include <string.h>
 
 void zero_r() {
     for (int i = 0; i < CELLS_X_COUNT; i++) {

@@ -5,28 +5,29 @@
 #ifndef INC_2D_CALC_GLOBAL_H
 #define INC_2D_CALC_GLOBAL_H
 
-#define M_PI        3.14159265358979323846
-#define GAS_CONSTANT 8.31446261815324
+#define M_PI                    3.14159265358979323846
+#define GAS_CONSTANT            8.31446261815324
 
-#define BASE_FN_COUNT    3
-#define CELLS_X_COUNT            80
-#define CELLS_Y_COUNT            800
+#define BASE_FN_COUNT           3
 #define COMPONENTS_COUNT        4
 
-#define GP_EDGE_COUNT 2
-#define GP_CELL_COUNT 4
+#define GP_EDGE_COUNT           2
+#define GP_CELL_COUNT           4
 
-#define X_MIN   0.0
-#define X_MAX   0.04
-#define Y_MIN   0.0
-#define Y_MAX   0.4
+#define X_MIN                   0.0
+#define X_MAX                   0.08
+#define Y_MIN                   0.0
+#define Y_MAX                   0.02
 
-#define TAU     5.0e-8
-#define TIME_MAX 2.5e-3
+#define CELLS_X_COUNT           160
+#define CELLS_Y_COUNT           40
 
-#define SAVE_STEP 1
+#define TAU                     5.0e-8
+#define TIME_MAX                2.5e-3
 
-#define LIMITER_ALPHA 2.0
+#define SAVE_STEP               50
+
+#define LIMITER_ALPHA           2.0
 
 #define _SIGN_(X) (fabs(X)/(X))
 #define _MIN_(X, Y) ((X)<(Y) ? (X) : (Y))

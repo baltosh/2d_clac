@@ -2,9 +2,6 @@
 // Created by nzvi on 19.05.2020.
 //
 
-#include <math.h>
-#include <stdio.h>
-#include "include/basis.h"
 #include "include/parameters.h"
 
 void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
@@ -37,18 +34,6 @@ void cons_to_prim(int i, int j, double x, double y, prim_t *prim) {
     for (int i_comp = 0; i_comp < COMPONENTS_COUNT; i_comp++) {
         prim->c[i_comp] = get_field_rc(i, j, x, y, i_comp) / ro;
     }
-}
-
-double get_component_cp(int id) {
-    //этан, этилен, водород, метан
-    double cps[COMPONENTS_COUNT] = {1014.16/**469.64*/, 572.57, 14274.97, 925.55};
-    return cps[id];
-}
-
-double get_component_M(int id) {
-    //этан, этилен, водород, метан
-    double Ms[COMPONENTS_COUNT] = {0.02869409/**0.03007012*/, 0.02805418, 0.00201594, 0.01604303};
-    return Ms[id];
 }
 
 double get_cell_cp(int i, int j) {
@@ -101,9 +86,6 @@ double get_field_ro(int i, int j, double x, double y) {
 
     for (int i_com = 0; i_com < COMPONENTS_COUNT; i_com++) {
         for (int i_func = 0; i_func < BASE_FN_COUNT; i_func++) {
-            if (data[i][j].rc[i_com][i_func] != data[i][j].rc[i_com][i_func]) {
-                printf("Density in %i %i Is NAN!!!11\n", i, j);
-            }
             result += data[i][j].rc[i_com][i_func] * bf(i_func, i, j, x, y);
         }
     }

@@ -7,6 +7,10 @@
 
 #include "global.h"
 #include <string.h>
+#include "parameters.h"
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
 
 void zero_r();
 
